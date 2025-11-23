@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { DataProvider, useData } from './context/DataContext';
-import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, Bot, ChevronRight, UserCircle, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, Bot, ChevronRight, UserCircle, CalendarDays, CheckCheck } from 'lucide-react';
 import { Role, RequestStatus } from './types';
 
 // Pages
@@ -34,7 +34,7 @@ const SidebarItem = ({ to, icon: Icon, label, active, onClick }: any) => (
 );
 
 const Layout = ({ children }: { children?: React.ReactNode }) => {
-  const { currentUser, logout, notifications, markNotificationRead, requests, departments, overtime } = useData();
+  const { currentUser, logout, notifications, markNotificationRead, markAllNotificationsRead, requests, departments, overtime } = useData();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -48,18 +48,11 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
         setToast(e.detail);
         setTimeout(() => setToast(null), 4000);
     };
-    // Listen for legacy 'mock-email-sent'
-    const handleEmailEvent = (e: any) => {
-        setToast({ title: 'Email Enviado (Simulado)', msg: `Para: ${e.detail.to}`, type: 'info' });
-        setTimeout(() => setToast(null), 3000);
-    };
     
     window.addEventListener('show-toast', handleToastEvent);
-    window.addEventListener('mock-email-sent', handleEmailEvent);
     
     return () => {
         window.removeEventListener('show-toast', handleToastEvent);
-        window.removeEventListener('mock-email-sent', handleEmailEvent);
     };
   }, []);
 
@@ -152,8 +145,15 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
               {isNotifOpen && (
                 <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden z-50">
                   <div className="px-4 py-3 border-b border-slate-50 bg-slate-50 flex justify-between items-center">
-                    <h3 className="text-sm font-semibold text-slate-700">Notificaciones</h3>
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{unreadNotifsCount} nuevas</span>
+                    <div>
+                       <h3 className="text-sm font-semibold text-slate-700">Notificaciones</h3>
+                       <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{unreadNotifsCount} nuevas</span>
+                    </div>
+                    {unreadNotifsCount > 0 && (
+                        <button onClick={markAllNotificationsRead} className="text-xs text-primary hover:underline flex items-center" title="Marcar todas como leídas">
+                           <CheckCheck size={14} className="mr-1" /> Leídas
+                        </button>
+                    )}
                   </div>
                   
                   {isSupervisorOrAdmin && pendingTasksCount > 0 && (
@@ -169,11 +169,11 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
                   )}
 
                   <div className="max-h-80 overflow-y-auto">
-                    {notifications.filter(n => n.userId === currentUser?.id).length === 0 ? (
+                    {notifications.filter(n => n.userId === currentUser?.id && !n.read).length === 0 ? (
                       <p className="text-center py-8 text-sm text-slate-400">No tienes mensajes nuevos.</p>
                     ) : (
-                      notifications.filter(n => n.userId === currentUser?.id).map(n => (
-                        <div key={n.id} className={`px-4 py-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer ${!n.read ? 'bg-blue-50/50' : ''}`} onClick={() => markNotificationRead(n.id)}>
+                      notifications.filter(n => n.userId === currentUser?.id && !n.read).map(n => (
+                        <div key={n.id} className="px-4 py-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer bg-blue-50/50" onClick={() => markNotificationRead(n.id)}>
                           <div className="flex justify-between items-start mb-1">
                             <p className="text-sm font-medium text-slate-800">{n.title}</p>
                             <span className="text-xs text-slate-400">{new Date(n.timestamp).toLocaleTimeString()}</span>

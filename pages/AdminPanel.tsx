@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle } from 'lucide-react';
+import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server } from 'lucide-react';
 import { Role, RequestStatus, AbsenceType, Department, User, OvertimeRecord, RedemptionType, EmailTemplate } from '../types';
 
 const AdminPanel = () => {
@@ -9,7 +9,7 @@ const AdminPanel = () => {
       absenceTypes, createAbsenceType, deleteAbsenceType, updateAbsenceType,
       departments, addDepartment, updateDepartment, deleteDepartment,
       users, updateUser, adjustUserVacation, addUser, requests, deleteRequest, overtime, addOvertime, deleteOvertime,
-      notifications, importDatabase, emailTemplates, updateEmailTemplate
+      notifications, importDatabase, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig
   } = useData();
   
   const [activeTab, setActiveTab] = useState<'config' | 'users' | 'comms'>('config');
@@ -24,6 +24,8 @@ const AdminPanel = () => {
 
   // --- COMM TAB STATES ---
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  const [emailConfigForm, setEmailConfigForm] = useState(emailConfig);
+  const [smtpConfigForm, setSmtpConfigForm] = useState(smtpConfig);
 
   // --- USER TAB STATES ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -142,6 +144,16 @@ const AdminPanel = () => {
               recipients: exists ? prev.recipients.filter(r => r !== role) : [...prev.recipients, role]
           };
       });
+  };
+
+  const handleSaveEmailConfig = (e: React.FormEvent) => {
+      e.preventDefault();
+      saveEmailConfig(emailConfigForm);
+  };
+
+  const handleSaveSmtpConfig = (e: React.FormEvent) => {
+      e.preventDefault();
+      saveSmtpConfig(smtpConfigForm);
   };
 
   // --- HANDLERS: BACKUP ---
@@ -527,74 +539,163 @@ const AdminPanel = () => {
        )}
 
        {activeTab === 'comms' && (
-           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-               <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-                  <Mail className="mr-2 text-primary" size={20} /> Plantillas de Email
-               </h3>
-               <p className="text-sm text-slate-500 mb-6">Personaliza los mensajes automáticos que envía la plataforma y selecciona quién debe recibirlos.</p>
+           <div className="space-y-6">
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                   <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                      <Mail className="mr-2 text-primary" size={20} /> Plantillas de Email
+                   </h3>
+                   <p className="text-sm text-slate-500 mb-6">Personaliza los mensajes automáticos que envía la plataforma y selecciona quién debe recibirlos.</p>
 
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                   <div className="col-span-1 border-r border-slate-100 pr-4 space-y-2">
-                       {emailTemplates.map(t => (
-                           <button 
-                              key={t.id}
-                              onClick={() => setEditingTemplate(t)}
-                              className={`w-full text-left p-3 rounded-lg text-sm transition-colors ${editingTemplate?.id === t.id ? 'bg-primary text-white shadow-md shadow-primary/30' : 'hover:bg-slate-50 text-slate-700'}`}
-                           >
-                               <div className="font-bold mb-1">{t.name}</div>
-                               <div className={`text-xs ${editingTemplate?.id === t.id ? 'text-blue-200' : 'text-slate-400'}`}>Asunto: {t.subject}</div>
-                           </button>
-                       ))}
-                   </div>
-                   
-                   <div className="col-span-2">
-                       {editingTemplate ? (
-                           <form onSubmit={handleUpdateTemplate} className="space-y-4">
-                               <div className="bg-slate-50 p-3 rounded-lg mb-4">
-                                   <p className="text-xs font-bold text-slate-500 uppercase mb-2">Destinatarios</p>
-                                   <div className="flex space-x-4">
-                                       <label className="flex items-center space-x-2 text-sm cursor-pointer">
-                                           <input type="checkbox" checked={editingTemplate.recipients.includes(Role.WORKER)} onChange={() => toggleRecipient(Role.WORKER)} className="rounded text-primary focus:ring-primary" />
-                                           <span>Trabajador</span>
-                                       </label>
-                                       <label className="flex items-center space-x-2 text-sm cursor-pointer">
-                                           <input type="checkbox" checked={editingTemplate.recipients.includes(Role.SUPERVISOR)} onChange={() => toggleRecipient(Role.SUPERVISOR)} className="rounded text-primary focus:ring-primary" />
-                                           <span>Supervisor</span>
-                                       </label>
-                                       <label className="flex items-center space-x-2 text-sm cursor-pointer">
-                                           <input type="checkbox" checked={editingTemplate.recipients.includes(Role.ADMIN)} onChange={() => toggleRecipient(Role.ADMIN)} className="rounded text-primary focus:ring-primary" />
-                                           <span>Administrador</span>
-                                       </label>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                       <div className="col-span-1 border-r border-slate-100 pr-4 space-y-2">
+                           {emailTemplates.map(t => (
+                               <button 
+                                  key={t.id}
+                                  onClick={() => setEditingTemplate(t)}
+                                  className={`w-full text-left p-3 rounded-lg text-sm transition-colors ${editingTemplate?.id === t.id ? 'bg-primary text-white shadow-md shadow-primary/30' : 'hover:bg-slate-50 text-slate-700'}`}
+                               >
+                                   <div className="font-bold mb-1">{t.name}</div>
+                                   <div className={`text-xs ${editingTemplate?.id === t.id ? 'text-blue-200' : 'text-slate-400'}`}>Asunto: {t.subject}</div>
+                               </button>
+                           ))}
+                       </div>
+                       
+                       <div className="col-span-2">
+                           {editingTemplate ? (
+                               <form onSubmit={handleUpdateTemplate} className="space-y-4">
+                                   <div className="bg-slate-50 p-3 rounded-lg mb-4">
+                                       <p className="text-xs font-bold text-slate-500 uppercase mb-2">Destinatarios</p>
+                                       <div className="flex space-x-4">
+                                           <label className="flex items-center space-x-2 text-sm cursor-pointer">
+                                               <input type="checkbox" checked={editingTemplate.recipients.includes(Role.WORKER)} onChange={() => toggleRecipient(Role.WORKER)} className="rounded text-primary focus:ring-primary" />
+                                               <span>Trabajador</span>
+                                           </label>
+                                           <label className="flex items-center space-x-2 text-sm cursor-pointer">
+                                               <input type="checkbox" checked={editingTemplate.recipients.includes(Role.SUPERVISOR)} onChange={() => toggleRecipient(Role.SUPERVISOR)} className="rounded text-primary focus:ring-primary" />
+                                               <span>Supervisor</span>
+                                           </label>
+                                           <label className="flex items-center space-x-2 text-sm cursor-pointer">
+                                               <input type="checkbox" checked={editingTemplate.recipients.includes(Role.ADMIN)} onChange={() => toggleRecipient(Role.ADMIN)} className="rounded text-primary focus:ring-primary" />
+                                               <span>Administrador</span>
+                                           </label>
+                                       </div>
                                    </div>
-                               </div>
 
-                               <div>
-                                   <label className="block text-sm font-medium text-slate-700 mb-1">Asunto</label>
-                                   <input type="text" className="w-full border rounded-lg p-2 text-sm" 
-                                      value={editingTemplate.subject} onChange={e => setEditingTemplate({...editingTemplate, subject: e.target.value})}
-                                   />
-                               </div>
-                               
-                               <div>
-                                   <label className="block text-sm font-medium text-slate-700 mb-1">Cuerpo del Mensaje</label>
-                                   <p className="text-xs text-slate-400 mb-1">Variables disponibles: {`{{name}}`}</p>
-                                   <textarea className="w-full border rounded-lg p-2 text-sm h-32" 
-                                      value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})}
-                                   />
-                               </div>
+                                   <div>
+                                       <label className="block text-sm font-medium text-slate-700 mb-1">Asunto</label>
+                                       <input type="text" className="w-full border rounded-lg p-2 text-sm" 
+                                          value={editingTemplate.subject} onChange={e => setEditingTemplate({...editingTemplate, subject: e.target.value})}
+                                       />
+                                   </div>
+                                   
+                                   <div>
+                                       <label className="block text-sm font-medium text-slate-700 mb-1">Cuerpo del Mensaje</label>
+                                       <p className="text-xs text-slate-400 mb-1">Variables disponibles: {`{{name}}`}</p>
+                                       <textarea className="w-full border rounded-lg p-2 text-sm h-32" 
+                                          value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})}
+                                       />
+                                   </div>
 
-                               <div className="flex justify-end pt-2">
-                                   <button type="submit" className="flex items-center bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90">
-                                       <Save size={16} className="mr-2" /> Guardar Cambios
-                                   </button>
+                                   <div className="flex justify-end pt-2">
+                                       <button type="submit" className="flex items-center bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90">
+                                           <Save size={16} className="mr-2" /> Guardar Cambios
+                                       </button>
+                                   </div>
+                               </form>
+                           ) : (
+                               <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
+                                   Selecciona una plantilla para editar.
                                </div>
-                           </form>
-                       ) : (
-                           <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">
-                               Selecciona una plantilla para editar.
-                           </div>
-                       )}
+                           )}
+                       </div>
                    </div>
+               </div>
+               
+               {/* EMAILJS CONFIGURATION */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                  <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                      <Key className="mr-2 text-slate-500" size={20} /> Integración EmailJS (Frontend)
+                  </h3>
+                  <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                      <p className="text-sm text-blue-700">Para enviar correos directamente desde el navegador (sin servidor), regístrate gratis en <a href="https://www.emailjs.com/" target="_blank" className="underline font-bold">EmailJS.com</a> y copia tus credenciales aquí. <span className="font-bold">Este es el método activo actualmente.</span></p>
+                  </div>
+                  <form onSubmit={handleSaveEmailConfig} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                       <div>
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Service ID</label>
+                           <input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="ej. service_xyz123"
+                              value={emailConfigForm.serviceId} onChange={e => setEmailConfigForm({...emailConfigForm, serviceId: e.target.value})}
+                           />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Template ID</label>
+                           <input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="ej. template_abc456"
+                              value={emailConfigForm.templateId} onChange={e => setEmailConfigForm({...emailConfigForm, templateId: e.target.value})}
+                           />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Public Key</label>
+                           <input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="ej. user_12345"
+                              value={emailConfigForm.publicKey} onChange={e => setEmailConfigForm({...emailConfigForm, publicKey: e.target.value})}
+                           />
+                       </div>
+                       <div className="md:col-span-3 flex justify-end">
+                           <button type="submit" className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700">
+                               Guardar Credenciales EmailJS
+                           </button>
+                       </div>
+                  </form>
+               </div>
+
+               {/* GENERIC SMTP CONFIGURATION (NEW SECTION) */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                  <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                      <Server className="mr-2 text-slate-500" size={20} /> Configuración Servidor SMTP (Backend)
+                  </h3>
+                  <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-4">
+                      <p className="text-sm text-amber-700">Esta configuración se almacena para ser utilizada por una integración futura con un servidor backend. Los navegadores web no permiten conexiones SMTP directas por seguridad.</p>
+                  </div>
+                  <form onSubmit={handleSaveSmtpConfig} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                       <div className="md:col-span-2 lg:col-span-3">
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Servidor SMTP (Host)</label>
+                           <input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="ej. smtp.gmail.com"
+                              value={smtpConfigForm.host} onChange={e => setSmtpConfigForm({...smtpConfigForm, host: e.target.value})}
+                           />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Puerto</label>
+                           <input type="number" className="w-full border rounded-lg p-2 text-sm" placeholder="587"
+                              value={smtpConfigForm.port} onChange={e => setSmtpConfigForm({...smtpConfigForm, port: e.target.value})}
+                           />
+                       </div>
+                       <div className="md:col-span-1 lg:col-span-2">
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Usuario</label>
+                           <input type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="usuario@dominio.com"
+                              value={smtpConfigForm.user} onChange={e => setSmtpConfigForm({...smtpConfigForm, user: e.target.value})}
+                           />
+                       </div>
+                       <div className="md:col-span-1 lg:col-span-2">
+                           <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Contraseña</label>
+                           <input type="password" className="w-full border rounded-lg p-2 text-sm" placeholder="••••••••"
+                              value={smtpConfigForm.pass} onChange={e => setSmtpConfigForm({...smtpConfigForm, pass: e.target.value})}
+                           />
+                       </div>
+                       <div className="md:col-span-2 flex items-center pt-4">
+                           <label className="flex items-center space-x-2 text-sm cursor-pointer">
+                               <input 
+                                   type="checkbox" 
+                                   checked={smtpConfigForm.secure}
+                                   onChange={e => setSmtpConfigForm({...smtpConfigForm, secure: e.target.checked})}
+                                   className="rounded text-primary focus:ring-primary" 
+                                />
+                               <span className="text-slate-700">Usar conexión segura (SSL/TLS)</span>
+                           </label>
+                       </div>
+                       <div className="md:col-span-2 lg:col-span-4 flex justify-end">
+                           <button type="submit" className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700">
+                               Guardar Configuración SMTP
+                           </button>
+                       </div>
+                  </form>
                </div>
            </div>
        )}
