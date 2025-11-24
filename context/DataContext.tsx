@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate } from '../types';
+import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 // Helper generators
@@ -29,6 +29,7 @@ interface DataContextType {
   overtime: OvertimeRecord[];
   notifications: Notification[];
   emailTemplates: EmailTemplate[];
+  shifts: Shift[];
   emailConfig: EmailConfig;
   smtpConfig: SMTPConfig;
   isLoading: boolean;
@@ -47,6 +48,10 @@ interface DataContextType {
   sendNotification: (userId: string, title: string, message: string, type: NotificationType) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  
+  // Shift Management
+  addShift: (userId: string, date: string, type: ShiftType) => void;
+  deleteShift: (id: string) => void;
   
   // Admin Functions
   updateAbsenceType: (type: AbsenceType) => void;
@@ -82,7 +87,8 @@ const SEED_USERS: User[] = [
     avatarUrl: 'https://ui-avatars.com/api/?name=Juan+Perez&background=0D8ABC&color=fff',
     vacationAdjustment: 0,
     vacationHistory: [],
-    password: '123'
+    password: '123',
+    calendarColor: '#3b82f6' // Blue
   },
   { 
     id: 'u2', 
@@ -93,7 +99,8 @@ const SEED_USERS: User[] = [
     avatarUrl: 'https://ui-avatars.com/api/?name=Laura+Gomez&background=10B981&color=fff',
     vacationAdjustment: 0,
     vacationHistory: [],
-    password: '123'
+    password: '123',
+    calendarColor: '#10b981' // Green
   },
   { 
     id: 'u3', 
@@ -104,7 +111,8 @@ const SEED_USERS: User[] = [
     avatarUrl: 'https://ui-avatars.com/api/?name=Carlos+Admin&background=8B5CF6&color=fff',
     vacationAdjustment: 0,
     vacationHistory: [],
-    password: '123'
+    password: '123',
+    calendarColor: '#8b5cf6' // Purple
   }
 ];
 
@@ -120,7 +128,6 @@ const SEED_EMAIL_TEMPLATES: EmailTemplate[] = [
     { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una nueva solicitud de ausencia.', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et3', eventType: 'REQUEST_APPROVED', name: 'Ausencia Aprobada', subject: 'Solicitud Aprobada', body: 'Hola {{name}}, tu solicitud ha sido APROBADA.', recipients: [Role.WORKER] },
     { id: 'et4', eventType: 'REQUEST_REJECTED', name: 'Ausencia Rechazada', subject: 'Solicitud Rechazada', body: 'Hola {{name}}, tu solicitud ha sido RECHAZADA.', recipients: [Role.WORKER] },
-    // NEW TEMPLATES FOR OVERTIME
     { id: 'et5', eventType: 'OVERTIME_CREATED', name: 'Registro Horas (Aviso)', subject: 'Registro Horas: {{name}}', body: '{{name}} ha registrado {{hours}} horas extras. Motivo: {{description}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et6', eventType: 'REDEMPTION_CREATED', name: 'Consumo Horas (Aviso)', subject: 'Solicitud Canje: {{name}}', body: '{{name}} solicita canjear {{hours}} horas. Tipo: {{type}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et7', eventType: 'OVERTIME_APPROVED', name: 'Horas/Canje Aprobado', subject: 'Registro Aprobado', body: 'Tu registro de {{hours}}h ha sido APROBADO.', recipients: [Role.WORKER] },
@@ -136,16 +143,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [overtime, setOvertime] = useState<OvertimeRecord[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Email Configuration (Stored in LocalStorage for Prototype Security/Simplicity)
+  // Email Configuration
   const [emailConfig, setEmailConfig] = useState<EmailConfig>({
       serviceId: localStorage.getItem('emailjs_service_id') || '',
       templateId: localStorage.getItem('emailjs_template_id') || '',
       publicKey: localStorage.getItem('emailjs_public_key') || ''
   });
 
-  // SMTP Configuration (Stored in LocalStorage)
+  // SMTP Configuration
   const [smtpConfig, setSmtpConfig] = useState<SMTPConfig>({
       host: localStorage.getItem('smtp_host') || '',
       port: localStorage.getItem('smtp_port') || '587',
@@ -154,7 +162,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       secure: localStorage.getItem('smtp_secure') === 'true'
   });
 
-  // Helper to dispatch UI Toasts (replaces alert)
   const notifyUI = (title: string, msg: string, type: 'success' | 'error' | 'info' = 'info') => {
       const event = new CustomEvent('show-toast', { detail: { title, msg, type } });
       window.dispatchEvent(event);
@@ -171,12 +178,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: otData } = await supabase.from('overtime').select('*');
         const { data: notifData } = await supabase.from('notifications').select('*');
         const { data: templData } = await supabase.from('email_templates').select('*');
+        const { data: shiftsData } = await supabase.from('shifts').select('*');
 
-        // AUTO-SEED LOGIC: If users are empty, seed the DB
         if ((!usersData || usersData.length === 0) && (!deptsData || deptsData.length === 0)) {
             console.log("Database empty. Seeding initial data...");
             await seedDatabase();
-            // Re-fetch after seed
             return; 
         }
 
@@ -186,18 +192,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (reqsData) setRequests(reqsData);
         if (otData) setOvertime(otData);
         if (notifData) setNotifications(notifData);
+        if (shiftsData) setShifts(shiftsData);
         
-        // Seed templates if missing completely
         if (!templData || templData.length === 0) {
              await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
              setEmailTemplates(SEED_EMAIL_TEMPLATES);
         } else {
-             // BACKFILL LOGIC: Check if new overtime templates are missing and add them
              const existingTypes = templData.map(t => t.eventType);
              const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
-             
              if (missingTemplates.length > 0) {
-                 console.log("Backfilling missing email templates...", missingTemplates);
                  await supabase.from('email_templates').insert(missingTemplates);
                  setEmailTemplates([...templData, ...missingTemplates]);
              } else {
@@ -218,7 +221,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await supabase.from('users').insert(SEED_USERS);
           await supabase.from('absence_types').insert(SEED_ABSENCE_TYPES);
           await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
-          // Recursively fetch to update state
           fetchData();
       } catch (e) {
           console.error("Error seeding database:", e);
@@ -227,8 +229,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     fetchData();
-    
-    // Subscribe to realtime changes (Simple reload on change for prototype)
     const channels = [
         supabase.channel('public:users').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
         supabase.channel('public:departments').on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => fetchData()).subscribe(),
@@ -237,14 +237,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supabase.channel('public:overtime').on('postgres_changes', { event: '*', schema: 'public', table: 'overtime' }, () => fetchData()).subscribe(),
         supabase.channel('public:notifications').on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => fetchData()).subscribe(),
         supabase.channel('public:email_templates').on('postgres_changes', { event: '*', schema: 'public', table: 'email_templates' }, () => fetchData()).subscribe(),
+        supabase.channel('public:shifts').on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, () => fetchData()).subscribe(),
     ];
-
-    return () => {
-        channels.forEach(ch => supabase.removeChannel(ch));
-    };
+    return () => { channels.forEach(ch => supabase.removeChannel(ch)); };
   }, []);
 
-  // Helper to parse template
   const parseTemplate = (text: string, vars: Record<string, string>) => {
       let result = text;
       Object.keys(vars).forEach(key => {
@@ -253,22 +250,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return result;
   };
 
-  // REAL Email Sending Logic (using EmailJS)
   const sendEmailWithTemplate = async (eventType: string, toUser: User, variables: Record<string, string>) => {
       const template = emailTemplates.find(t => t.eventType === eventType);
-      
-      if (!template || !template.recipients.includes(toUser.role)) {
-          // If no specific template found, check if we need to reload templates or ignore
-          if(!template) console.warn(`No template found for ${eventType}`);
-          return;
-      }
+      if (!template || !template.recipients.includes(toUser.role)) return;
 
       const subject = parseTemplate(template.subject, variables);
       const body = parseTemplate(template.body, variables);
 
-      console.log(`Preparing to send email to ${toUser.email} [${eventType}]`);
-
-      // Check if EmailJS is configured
       if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
           try {
              // @ts-ignore
@@ -277,33 +265,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                  await window.emailjs.send(
                      emailConfig.serviceId,
                      emailConfig.templateId,
-                     {
-                         to_email: toUser.email,
-                         subject: subject,
-                         message: body,
-                         to_name: toUser.name
-                     },
+                     { to_email: toUser.email, subject: subject, message: body, to_name: toUser.name },
                      { publicKey: emailConfig.publicKey }
                  );
-                 console.log("✅ Email sent successfully via EmailJS");
-                 // Optional: Only show UI toast for important alerts, to avoid spamming toast
                  if (eventType === 'WELCOME') notifyUI('Email Enviado', `Bienvenida enviada a ${toUser.email}`, 'success');
              }
           } catch (error: any) {
-              console.error("❌ Failed to send email via EmailJS:", error);
               notifyUI('Error Email', `No se pudo enviar el correo: ${error.text || 'Error desconocido'}`, 'error');
-          }
-      } else {
-          // Fallback Simulation
-          console.group(`📧 [EMAIL SIMULATION - NO CONFIG]`);
-          console.log(`To: ${toUser.email}`);
-          console.log(`Subject: ${subject}`);
-          console.log(`Body: ${body}`);
-          console.groupEnd();
-          
-          // Only notify about simulation if it's an explicit action, not background
-          if (eventType === 'WELCOME' || eventType.includes('APPROVED')) {
-             notifyUI('Email Simulado', `Configura EmailJS en Admin para envío real.`, 'info');
           }
       }
   };
@@ -336,11 +304,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       read: false,
       timestamp: new Date().toISOString()
     };
-    
-    // Optimistic Update
     setNotifications(prev => [newNotif, ...prev]);
-    
-    // DB Update
     await supabase.from('notifications').insert(newNotif);
   };
 
@@ -353,19 +317,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = () => setCurrentUser(null);
 
   const updateUser = async (id: string, data: Partial<User>) => {
-    // Optimistic
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...data } : u));
-    if (currentUser?.id === id) {
-        setCurrentUser(prev => prev ? { ...prev, ...data } : null);
-    }
-    // DB
+    if (currentUser?.id === id) setCurrentUser(prev => prev ? { ...prev, ...data } : null);
     await supabase.from('users').update(data).eq('id', id);
   };
 
   const adjustUserVacation = async (userId: string, days: number, reason: string) => {
       const user = users.find(u => u.id === userId);
       if (!user) return;
-
       const currentAdj = user.vacationAdjustment || 0;
       const newHistory: VacationLogEntry = {
           id: generateId(),
@@ -374,18 +333,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           reason,
           adminId: currentUser?.id || 'system'
       };
-      
       const updatedHistory = [newHistory, ...(user.vacationHistory || [])];
-      
-      // Optimistic
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, vacationAdjustment: currentAdj + days, vacationHistory: updatedHistory } : u));
-      
-      // DB
       await supabase.from('users').update({
           vacationAdjustment: currentAdj + days,
           vacationHistory: updatedHistory
       }).eq('id', userId);
-
       sendNotification(userId, 'Ajuste de Vacaciones', `Se han ${days > 0 ? 'añadido' : 'restado'} ${Math.abs(days)} días. Motivo: ${reason}`, NotificationType.INFO);
   };
 
@@ -394,70 +347,35 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const newUser: User = {
         ...user,
         id: newUserId,
-        password: '123', // Default password
+        password: '123',
         vacationAdjustment: initialVacation,
-        vacationHistory: initialVacation !== 0 ? [{
-            id: generateId(),
-            date: new Date().toISOString(),
-            days: initialVacation,
-            reason: 'Saldo Inicial',
-            adminId: currentUser?.id || 'system'
-        }] : [],
-        avatarUrl: user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`
+        vacationHistory: initialVacation !== 0 ? [{ id: generateId(), date: new Date().toISOString(), days: initialVacation, reason: 'Saldo Inicial', adminId: currentUser?.id || 'system' }] : [],
+        avatarUrl: user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`,
+        calendarColor: user.calendarColor || '#3b82f6'
     };
-
-    // Optimistic
     setUsers(prev => [...prev, newUser]);
-    
-    // DB
     await supabase.from('users').insert(newUser);
-    
-    // Email Template logic for WELCOME
     sendEmailWithTemplate('WELCOME', newUser, { name: newUser.name });
-
     if (initialOvertime > 0) {
-        const overtimeRec = {
-            id: generateId(),
-            userId: newUserId,
-            date: new Date().toISOString(),
-            hours: initialOvertime,
-            description: 'Saldo Inicial (Carga Admin)',
-            status: RequestStatus.APPROVED,
-            consumed: 0,
-            createdAt: new Date().toISOString(),
-            isAdjustment: true
-        };
+        const overtimeRec = { id: generateId(), userId: newUserId, date: new Date().toISOString(), hours: initialOvertime, description: 'Saldo Inicial (Carga Admin)', status: RequestStatus.APPROVED, consumed: 0, createdAt: new Date().toISOString(), isAdjustment: true };
         setOvertime(prev => [...prev, overtimeRec]);
         await supabase.from('overtime').insert(overtimeRec);
     }
   };
 
   const addRequest = async (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>) => {
-    const newReq = {
-      ...req,
-      id: generateId(),
-      status: RequestStatus.PENDING,
-      createdAt: new Date().toISOString()
-    };
-    
+    const newReq = { ...req, id: generateId(), status: RequestStatus.PENDING, createdAt: new Date().toISOString() };
     setRequests(prev => [newReq, ...prev]);
     await supabase.from('requests').insert(newReq);
-
     const user = users.find(u => u.id === req.userId);
-    
     if (user) {
-        // Notify Admins/Supervisors logic using Templates
         const adminUsers = users.filter(u => u.role === Role.ADMIN);
         const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
         const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
-        
-        const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i); // Unique
-
+        const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
         allRecipients.forEach(recipient => {
             if (recipient.id !== req.userId) {
-                // UI Notification
                 sendNotification(recipient.id, 'Nueva Solicitud', `${user.name} ha solicitado ausencia.`, NotificationType.INFO);
-                // Email Template
                 sendEmailWithTemplate('REQUEST_CREATED', recipient, { name: user.name });
             }
         });
@@ -467,44 +385,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateRequestStatus = async (id: string, status: RequestStatus, reviewerId: string) => {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
     await supabase.from('requests').update({ status }).eq('id', id);
-
     const req = requests.find(r => r.id === id);
     if (req) {
       const user = users.find(u => u.id === req.userId);
       if (user) {
           sendNotification(req.userId, `Solicitud ${status === RequestStatus.APPROVED ? 'Aprobada' : 'Rechazada'}`, `Tu solicitud de ausencia ha sido ${status.toLowerCase()}.`, status === RequestStatus.APPROVED ? NotificationType.SUCCESS : NotificationType.ERROR);
-          
           if (status === RequestStatus.APPROVED) sendEmailWithTemplate('REQUEST_APPROVED', user, { name: user.name });
           if (status === RequestStatus.REJECTED) sendEmailWithTemplate('REQUEST_REJECTED', user, { name: user.name });
       }
     }
   };
 
-  // --- DELETE REQUEST (ROBUST) ---
   const deleteRequest = async (id: string) => {
       console.log(`[DELETE REQUEST] Deleting ID: ${id}`);
-      
       const originalRequests = [...requests];
-      // Optimistic
       setRequests(prev => prev.filter(r => r.id !== id));
-
       try {
-          // IMPORTANT: Force bypass RLS in case it's still active, although we disabled it in SQL.
-          // Supabase JS doesn't have a 'force' flag, but we assume the SQL `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` was run.
           const { error } = await supabase.from('requests').delete().eq('id', id);
-
           if (error) throw error;
-          
-          console.log("[DELETE SUCCESS] Request removed from DB");
           notifyUI('Eliminado', 'Solicitud eliminada. Los días se han restaurado.', 'success');
-
-          // 2. FETCH DATA TO ENSURE BALANCES ARE UPDATED
           await fetchData();
-
       } catch (error: any) {
-          console.error("Critical error deleting request:", error);
-          setRequests(originalRequests); // Rollback
-          
+          setRequests(originalRequests);
           if (error.code === '42501' || error.message?.includes('policy')) {
              notifyUI('Error de Permisos', `Supabase bloqueó el borrado. Ejecuta el script SQL proporcionado.`, 'error');
           } else {
@@ -515,37 +417,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const addOvertime = async (rec: Omit<OvertimeRecord, 'id' | 'status' | 'consumed' | 'createdAt'> & { status?: RequestStatus }) => {
     const isAutoApproved = rec.status === RequestStatus.APPROVED;
-    const newRec = {
-      ...rec,
-      id: generateId(),
-      status: rec.status || RequestStatus.PENDING,
-      consumed: 0,
-      createdAt: new Date().toISOString(),
-      isAdjustment: isAutoApproved
-    };
-
+    const newRec = { ...rec, id: generateId(), status: rec.status || RequestStatus.PENDING, consumed: 0, createdAt: new Date().toISOString(), isAdjustment: isAutoApproved };
     setOvertime(prev => [newRec, ...prev]);
     await supabase.from('overtime').insert(newRec);
-    
     const user = users.find(u => u.id === rec.userId);
-
      if (!isAutoApproved) {
         if (user) {
             sendNotification(user.id, 'Registro de Horas', `Has registrado ${rec.hours} horas extras.`, NotificationType.INFO);
-            
-            // EMAIL NOTIFICATION TO ADMINS/SUPERVISORS
             const adminUsers = users.filter(u => u.role === Role.ADMIN);
             const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
             const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
             const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
-
             allRecipients.forEach(recipient => {
                 if (recipient.id !== rec.userId) {
-                    sendEmailWithTemplate('OVERTIME_CREATED', recipient, { 
-                        name: user.name, 
-                        hours: String(rec.hours), 
-                        description: rec.description 
-                    });
+                    sendEmailWithTemplate('OVERTIME_CREATED', recipient, { name: user.name, hours: String(rec.hours), description: rec.description });
                 }
             });
         }
@@ -559,91 +444,55 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateOvertimeStatus = async (id: string, status: RequestStatus, reviewerId: string) => {
     const rec = overtime.find(o => o.id === id);
     let updatedOvertime = [...overtime];
-    
-    // Update local state
     updatedOvertime = updatedOvertime.map(o => o.id === id ? { ...o, status } : o);
-
     if (rec && status === RequestStatus.APPROVED && rec.hours < 0 && rec.linkedRecordIds) {
         let remainingToConsume = Math.abs(rec.hours);
-        
-        // Update linked records locally and prepare DB updates
         for (let i = 0; i < updatedOvertime.length; i++) {
              const o = updatedOvertime[i];
              if (rec.linkedRecordIds?.includes(o.id) && remainingToConsume > 0) {
                  const available = o.hours - o.consumed;
                  const take = Math.min(available, remainingToConsume);
                  remainingToConsume -= take;
-                 
                  const newConsumed = o.consumed + take;
                  updatedOvertime[i] = { ...o, consumed: newConsumed };
-                 
-                 // Update specific record in DB
                  await supabase.from('overtime').update({ consumed: newConsumed }).eq('id', o.id);
              }
         }
     }
-    
     setOvertime(updatedOvertime);
     await supabase.from('overtime').update({ status }).eq('id', id);
-
     if (rec) {
       const user = users.find(u => u.id === rec.userId);
       sendNotification(rec.userId, `Solicitud ${status === RequestStatus.APPROVED ? 'Aprobada' : 'Rechazada'}`, `El registro de horas (${rec.hours}h) ha sido ${status.toLowerCase()}.`, status === RequestStatus.APPROVED ? NotificationType.SUCCESS : NotificationType.ERROR);
-      
-      // EMAIL NOTIFICATION FOR STATUS UPDATE
       if(user) {
           const templateType = status === RequestStatus.APPROVED ? 'OVERTIME_APPROVED' : 'OVERTIME_REJECTED';
-          sendEmailWithTemplate(templateType, user, { 
-              name: user.name, 
-              hours: String(Math.abs(rec.hours)) 
-          });
+          sendEmailWithTemplate(templateType, user, { name: user.name, hours: String(Math.abs(rec.hours)) });
       }
     }
   };
 
-  // --- DELETE OVERTIME (ROBUST) ---
   const deleteOvertime = async (id: string) => {
-      console.log(`[DELETE OVERTIME] Deleting ID: ${id}`);
-      
       const rec = overtime.find(o => o.id === id);
       if (!rec) return;
-      
-      // If deleting an EARNED (positive) record that has been consumed
       if (rec.hours > 0 && rec.consumed > 0) {
           notifyUI('Acción Bloqueada', 'No puedes eliminar estas horas porque ya han sido consumidas o canjeadas parcialmente.', 'error');
           return;
       }
-
       const originalOvertime = [...overtime];
-      setOvertime(prev => prev.filter(o => o.id !== id)); // Optimistic UI
-
+      setOvertime(prev => prev.filter(o => o.id !== id)); 
       try {
-          // 1. RESTORE CONSUMED HOURS IF DELETING A REDEMPTION (Negative record)
           if (rec.hours < 0 && rec.status === RequestStatus.APPROVED && rec.linkedRecordIds && rec.linkedRecordIds.length > 0) {
-              console.log("Restoring balance for linked records...", rec.linkedRecordIds);
-              
               let remainingToRestore = Math.abs(rec.hours);
-
-              // We need fresh data from DB to avoid miscalculations
               const { data: freshData } = await supabase.from('overtime').select('*');
               const currentDbState = freshData || overtime;
-
               for (const linkedId of rec.linkedRecordIds) {
                   if (remainingToRestore <= 0) break;
-                  
                   const originalRec = currentDbState.find(o => o.id === linkedId);
-                  
                   if (originalRec) {
                       const restoreAmount = Math.min(originalRec.consumed, remainingToRestore);
-                      
                       if (restoreAmount > 0) {
                           const newConsumed = originalRec.consumed - restoreAmount;
-                          
-                          const { error: updateError } = await supabase
-                            .from('overtime')
-                            .update({ consumed: newConsumed })
-                            .eq('id', linkedId);
-
+                          const { error: updateError } = await supabase.from('overtime').update({ consumed: newConsumed }).eq('id', linkedId);
                           if (updateError) throw updateError;
                           remainingToRestore -= restoreAmount;
                       }
@@ -651,20 +500,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
               notifyUI('Saldo Restaurado', `Se han devuelto ${Math.abs(rec.hours)}h a tu bolsa de horas.`, 'success');
           }
-
-          // 2. DELETE RECORD
           const { error } = await supabase.from('overtime').delete().eq('id', id);
           if (error) throw error;
-          
-          console.log("[DELETE SUCCESS] Overtime record removed.");
-          
-          // 3. FORCE REFRESH TO SYNC UI BALANCES
           await fetchData();
-
       } catch (error: any) {
-          console.error("Critical error deleting overtime:", error);
-          setOvertime(originalOvertime); // Rollback
-          
+          setOvertime(originalOvertime);
           if (error.code === '42501' || error.message?.includes('policy')) {
              notifyUI('Error Permisos', `Ejecuta el script SQL proporcionado.`, 'error');
           } else {
@@ -689,22 +529,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
       setOvertime(prev => [newRec, ...prev]);
       await supabase.from('overtime').insert(newRec);
-      
       sendNotification(currentUser.id, 'Canje Solicitado', `Solicitud de canje de ${hours}h enviada correctamente.`, NotificationType.INFO);
-
-      // EMAIL NOTIFICATION FOR REDEMPTION REQUEST
       const adminUsers = users.filter(u => u.role === Role.ADMIN);
       const supervisorIds = currentUser.departmentId ? departments.find(d => d.id === currentUser.departmentId)?.supervisorIds || [] : [];
       const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
       const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
-
       allRecipients.forEach(recipient => {
           if (recipient.id !== currentUser.id) {
-              sendEmailWithTemplate('REDEMPTION_CREATED', recipient, { 
-                  name: currentUser.name, 
-                  hours: String(hours),
-                  type: type
-              });
+              sendEmailWithTemplate('REDEMPTION_CREATED', recipient, { name: currentUser.name, hours: String(hours), type: type });
           }
       });
   };
@@ -716,24 +548,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const markAllNotificationsRead = async () => {
       if (!currentUser) return;
-      // Optimistic
       setNotifications(prev => prev.map(n => n.userId === currentUser.id ? { ...n, read: true } : n));
-      // DB
       await supabase.from('notifications').update({ read: true }).eq('userId', currentUser.id);
   };
 
   const updateAbsenceType = async (updatedType: AbsenceType) => {
     const originalTypes = [...absenceTypes];
     setAbsenceTypes(prev => prev.map(t => t.id === updatedType.id ? updatedType : t));
-    
     try {
         const { error } = await supabase.from('absence_types').update(updatedType).eq('id', updatedType.id);
         if (error) throw error;
-        
         notifyUI('Guardado', 'Tipo de ausencia actualizado.', 'success');
     } catch (error: any) {
-        console.error("Error updating absence type:", error);
-        setAbsenceTypes(originalTypes); // Rollback
+        setAbsenceTypes(originalTypes);
         if (error.code === '42501' || error.message?.includes('policy')) {
              notifyUI('Error Permisos', 'Ejecuta en Supabase: "ALTER TABLE public.absence_types DISABLE ROW LEVEL SECURITY;"', 'error');
         } else {
@@ -754,11 +581,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const addDepartment = async (name: string, supervisorIds?: string[]) => {
-    const newDept: Department = {
-        id: generateId(),
-        name,
-        supervisorIds: supervisorIds || []
-    };
+    const newDept: Department = { id: generateId(), name, supervisorIds: supervisorIds || [] };
     setDepartments(prev => [...prev, newDept]);
     await supabase.from('departments').insert(newDept);
   };
@@ -777,6 +600,33 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setEmailTemplates(prev => prev.map(t => t.id === template.id ? template : t));
       await supabase.from('email_templates').update(template).eq('id', template.id);
   };
+
+  // --- SHIFT MANAGEMENT ---
+  const addShift = async (userId: string, date: string, type: ShiftType) => {
+      // Check if shift already exists
+      const exists = shifts.find(s => s.userId === userId && s.date === date);
+      if (exists) {
+          // If type is different, update it. If same, do nothing or user might want to toggle off.
+          // For this implementation, we'll allow updating via a delete-then-insert approach or simple update in future
+          // Here we just delete previous and insert new to be safe
+          await deleteShift(exists.id); 
+      }
+      
+      const newShift: Shift = {
+          id: generateId(),
+          userId,
+          date,
+          shiftType: type,
+          createdAt: new Date().toISOString()
+      };
+      setShifts(prev => [...prev, newShift]);
+      await supabase.from('shifts').insert(newShift);
+  };
+
+  const deleteShift = async (id: string) => {
+      setShifts(prev => prev.filter(s => s.id !== id));
+      await supabase.from('shifts').delete().eq('id', id);
+  };
   
   const importDatabase = (data: any) => {
       console.log("Database import is deprecated with Supabase integration.");
@@ -784,10 +634,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <DataContext.Provider value={{
-      currentUser, users, departments, absenceTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, isLoading,
+      currentUser, users, departments, absenceTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, isLoading,
       login, logout, updateUser, adjustUserVacation, addUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
-      addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase
+      addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase,
+      addShift, deleteShift
     }}>
       {children}
     </DataContext.Provider>

@@ -24,6 +24,11 @@ export enum RedemptionType {
   PAYROLL = 'PAYROLL'          // Abono en nomina
 }
 
+export enum ShiftType {
+  MORNING = 'MORNING',
+  AFTERNOON = 'AFTERNOON'
+}
+
 export interface VacationLogEntry {
   id: string;
   date: string;
@@ -39,25 +44,26 @@ export interface User {
   role: Role;
   departmentId?: string; // Optional for Admin
   avatarUrl?: string;
-  password?: string; // Added for password management
-  vacationAdjustment?: number; // Days added or removed by Admin
+  password?: string; 
+  vacationAdjustment?: number; 
   vacationHistory?: VacationLogEntry[];
+  calendarColor?: string; // Color distintivo del empleado
 }
 
 export interface Department {
   id: string;
   name: string;
-  supervisorIds: string[]; // Can be empty
+  supervisorIds: string[]; 
 }
 
 export interface AbsenceType {
   id: string;
   name: string;
-  isClosedRange: boolean; // If true, Admin defines specific dates
-  availableRanges?: { start: string; end: string }[]; // For closed ranges
+  isClosedRange: boolean; 
+  availableRanges?: { start: string; end: string }[]; 
   allowanceDays?: number;
   color: string;
-  deductsDays?: boolean; // Controls if this type reduces the vacation balance
+  deductsDays?: boolean; 
 }
 
 export interface AbsenceRequest {
@@ -75,14 +81,22 @@ export interface OvertimeRecord {
   id: string;
   userId: string;
   date: string;
-  hours: number; // Negative if redemption
+  hours: number; 
   description: string;
   status: RequestStatus;
-  consumed: number; // Hours already used from this record
+  consumed: number; 
   createdAt: string;
-  isAdjustment?: boolean; // If created by admin to fix balance
-  redemptionType?: RedemptionType; // Only for negative hours (consumption)
-  linkedRecordIds?: string[]; // IDs of the positive records being consumed
+  isAdjustment?: boolean; 
+  redemptionType?: RedemptionType; 
+  linkedRecordIds?: string[]; 
+}
+
+export interface Shift {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  shiftType: ShiftType;
+  createdAt: string;
 }
 
 export interface Notification {
@@ -97,9 +111,9 @@ export interface Notification {
 
 export interface EmailTemplate {
   id: string;
-  eventType: string; // e.g. 'WELCOME', 'REQUEST_CREATED'
-  name: string; // Human readable name
+  eventType: string; 
+  name: string; 
   subject: string;
   body: string;
-  recipients: Role[]; // Who receives this?
+  recipients: Role[]; 
 }

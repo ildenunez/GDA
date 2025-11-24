@@ -1,21 +1,32 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
-import { ChevronLeft, ChevronRight, Filter, AlertTriangle } from 'lucide-react';
-import { Role, RequestStatus } from '../types';
+import { ChevronLeft, ChevronRight, Filter, Briefcase, Moon, Sun, Plus, X } from 'lucide-react';
+import { Role, RequestStatus, ShiftType } from '../types';
 
 const CalendarView = () => {
-  const { currentUser, requests, users, departments, absenceTypes } = useData();
+  const { currentUser, requests, users, departments, absenceTypes, shifts, addShift, deleteShift } = useData();
   
   // --- STATE ---
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  const [managementMode, setManagementMode] = useState(false); // Toggle to edit shifts
+  
+  // Shift Management Modal
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [shiftForm, setShiftForm] = useState({
+      userId: '',
+      startDate: '',
+      endDate: '', // Range assignment
+      shiftType: ShiftType.MORNING
+  });
 
   // --- HELPERS ---
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => {
     const day = new Date(year, month, 1).getDay();
-    return day === 0 ? 6 : day - 1; // Adjust to make Monday 0, Sunday 6
+    return day === 0 ? 6 : day - 1; 
   };
 
   const isSameDay = (d1: Date, d2: Date) => 
@@ -30,87 +41,48 @@ const CalendarView = () => {
       return d >= s && d <= e;
   };
 
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
   // --- FILTER LOGIC ---
   const isAdmin = currentUser?.role === Role.ADMIN;
+  const isWorker = currentUser?.role === Role.WORKER;
   
-  // 1. Determine which users to show based on Role
   const availableUsers = useMemo(() => {
       if (isAdmin) return users;
-      // Supervisors only see their managed departments
+      if (isWorker && currentUser) return [currentUser]; // Worker only sees themselves
+      // Supervisor
       const managedDeptIds = departments.filter(d => d.supervisorIds.includes(currentUser?.id || '')).map(d => d.id);
       return users.filter(u => managedDeptIds.includes(u.departmentId || ''));
-  }, [users, isAdmin, currentUser, departments]);
-
-  // 2. Filter Requests based on UI Filters + Role Constraints
-  const filteredRequests = useMemo(() => {
-      return requests.filter(req => {
-          // Status Filter: Only Approved or Pending
-          if (req.status === RequestStatus.REJECTED) return false;
-          
-          const user = users.find(u => u.id === req.userId);
-          if (!user) return false;
-
-          // Role Constraint
-          const isManaged = availableUsers.some(u => u.id === user.id);
-          if (!isManaged) return false;
-
-          // UI Filters
-          if (selectedDeptId !== 'all' && user.departmentId !== selectedDeptId) return false;
-          if (selectedUserId !== 'all' && user.id !== selectedUserId) return false;
-
-          return true;
-      });
-  }, [requests, availableUsers, selectedDeptId, selectedUserId, users]);
-
-  // --- CONFLICT DETECTION LOGIC ---
-  const conflicts = useMemo(() => {
-      const detectedConflicts: { date: string, users: string[], deptName: string }[] = [];
-      
-      // Get all dates involved in the current month view (approx)
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth();
-      const daysInMonth = getDaysInMonth(year, month);
-
-      for (let d = 1; d <= daysInMonth; d++) {
-          const checkDate = new Date(year, month, d);
-          
-          // Find requests active on this date
-          const activeReqs = filteredRequests.filter(r => isDateInRange(checkDate, r.startDate, r.endDate));
-          
-          if (activeReqs.length > 1) {
-             // Group by Department to find conflicts
-             const byDept: Record<string, string[]> = {};
-             
-             activeReqs.forEach(req => {
-                 const u = users.find(usr => usr.id === req.userId);
-                 if (u && u.departmentId) {
-                     if (!byDept[u.departmentId]) byDept[u.departmentId] = [];
-                     byDept[u.departmentId].push(u.name);
-                 }
-             });
-
-             // If a department has > 1 person absent
-             Object.keys(byDept).forEach(deptId => {
-                 if (byDept[deptId].length > 1) {
-                     detectedConflicts.push({
-                         date: checkDate.toLocaleDateString(),
-                         users: byDept[deptId],
-                         deptName: departments.find(dp => dp.id === deptId)?.name || 'General'
-                     });
-                 }
-             });
-          }
-      }
-      return detectedConflicts;
-  }, [filteredRequests, currentDate, users, departments]);
+  }, [users, isAdmin, isWorker, currentUser, departments]);
 
 
-  // --- NAVIGATION ---
+  // --- HANDLERS ---
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
 
+  const handleAssignShifts = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!shiftForm.userId || !shiftForm.startDate || !shiftForm.endDate) return;
+      
+      const start = new Date(shiftForm.startDate);
+      const end = new Date(shiftForm.endDate);
+      
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = formatDate(d);
+          await addShift(shiftForm.userId, dateStr, shiftForm.shiftType);
+      }
+      setShowShiftModal(false);
+      setShiftForm({ userId: '', startDate: '', endDate: '', shiftType: ShiftType.MORNING });
+  };
+
+  const handleDayClick = (dateStr: string) => {
+      if (managementMode && !isWorker) {
+          setShiftForm({ ...shiftForm, startDate: dateStr, endDate: dateStr });
+          setShowShiftModal(true);
+      }
+  };
 
   // --- RENDER GRID ---
   const renderCalendarDays = () => {
@@ -121,34 +93,69 @@ const CalendarView = () => {
       
       const days = [];
       
-      // Empty slots
       for (let i = 0; i < firstDay; i++) {
           days.push(<div key={`empty-${i}`} className="bg-slate-50/50 h-32 border border-slate-100"></div>);
       }
 
-      // Days
       for (let d = 1; d <= daysInMonth; d++) {
           const date = new Date(year, month, d);
+          const dateStr = formatDate(date);
           const isToday = isSameDay(date, new Date());
           
-          const dayRequests = filteredRequests.filter(r => isDateInRange(date, r.startDate, r.endDate));
+          // Filter data for this cell
+          const dayRequests = requests.filter(r => 
+              r.status === RequestStatus.APPROVED && 
+              isDateInRange(date, r.startDate, r.endDate) &&
+              availableUsers.some(u => u.id === r.userId) &&
+              (selectedUserId === 'all' || r.userId === selectedUserId) &&
+              (selectedDeptId === 'all' || users.find(u => u.id === r.userId)?.departmentId === selectedDeptId)
+          );
+
+          const dayShifts = shifts.filter(s => 
+              s.date === dateStr && 
+              availableUsers.some(u => u.id === s.userId) &&
+              (selectedUserId === 'all' || s.userId === selectedUserId) &&
+              (selectedDeptId === 'all' || users.find(u => u.id === s.userId)?.departmentId === selectedDeptId)
+          );
 
           days.push(
-              <div key={d} className={`bg-white h-32 border border-slate-100 p-2 overflow-hidden hover:bg-slate-50 transition-colors relative ${isToday ? 'bg-blue-50/30' : ''}`}>
-                  <span className={`text-sm font-medium ${isToday ? 'bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center' : 'text-slate-700'}`}>{d}</span>
+              <div 
+                  key={d} 
+                  onClick={() => handleDayClick(dateStr)}
+                  className={`bg-white h-32 border border-slate-100 p-1 overflow-hidden transition-colors relative group ${managementMode && !isWorker ? 'cursor-pointer hover:bg-blue-50/50' : ''} ${isToday ? 'bg-blue-50/30' : ''}`}
+              >
+                  <span className={`text-sm font-medium ml-1 ${isToday ? 'bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center inline-block' : 'text-slate-700'}`}>{d}</span>
                   
-                  <div className="mt-1 space-y-1 overflow-y-auto max-h-[calc(100%-24px)] custom-scrollbar">
+                  {managementMode && !isWorker && (
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100">
+                          <Plus size={14} className="text-primary" />
+                      </div>
+                  )}
+
+                  <div className="mt-1 space-y-0.5 overflow-y-auto max-h-[calc(100%-24px)] custom-scrollbar">
+                      {/* SHIFTS RENDER */}
+                      {dayShifts.map(shift => {
+                          const user = users.find(u => u.id === shift.userId);
+                          
+                          return (
+                              <div key={shift.id} className="flex items-center text-[10px] px-1 py-0.5 rounded border bg-white border-slate-200">
+                                  <div className="w-1.5 h-full rounded-l absolute left-0 top-0 bottom-0" style={{ backgroundColor: user?.calendarColor || '#ccc' }}></div>
+                                  <span className="font-bold ml-1 mr-1">{shift.shiftType === ShiftType.MORNING ? 'M' : 'T'}</span>
+                                  <span className="truncate flex-1">{user?.name.split(' ')[0]}</span>
+                                  {managementMode && !isWorker && (
+                                      <button onClick={(e) => { e.stopPropagation(); deleteShift(shift.id); }} className="ml-1 text-slate-400 hover:text-red-500"><X size={10} /></button>
+                                  )}
+                              </div>
+                          )
+                      })}
+
+                      {/* ABSENCES RENDER */}
                       {dayRequests.map(req => {
                           const user = users.find(u => u.id === req.userId);
                           const type = absenceTypes.find(t => t.id === req.typeId);
-                          const isPending = req.status === RequestStatus.PENDING;
-                          
                           return (
-                              <div key={req.id} className={`text-[10px] p-1 rounded border truncate cursor-pointer flex items-center ${isPending ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}
-                                title={`${user?.name} - ${type?.name} (${req.status})`}
-                              >
-                                  <span className={`w-1.5 h-1.5 rounded-full mr-1 ${type?.color.split(' ')[0]}`}></span>
-                                  <span className="font-semibold mr-1">{user?.name.split(' ')[0]}</span>
+                              <div key={req.id} className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-600 truncate border border-slate-200 opacity-70">
+                                  {user?.name.split(' ')[0]} - {type?.name}
                               </div>
                           )
                       })}
@@ -163,33 +170,44 @@ const CalendarView = () => {
     <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-                <h2 className="text-2xl font-bold text-slate-800">Calendario de Equipo</h2>
-                <p className="text-slate-500">Visualiza ausencias y detecta conflictos.</p>
+                <h2 className="text-2xl font-bold text-slate-800">Calendario</h2>
+                <p className="text-slate-500">Visualiza turnos y ausencias.</p>
             </div>
             
-            {/* FILTERS */}
-            <div className="flex space-x-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex items-center px-2 text-slate-400"><Filter size={16} /></div>
-                
-                {isAdmin && (
-                    <select 
-                        className="bg-transparent text-sm border-r border-slate-200 pr-2 outline-none"
-                        value={selectedDeptId} onChange={e => setSelectedDeptId(e.target.value)}
+            {!isWorker && (
+                <div className="flex items-center space-x-3">
+                    <button 
+                        onClick={() => setManagementMode(!managementMode)}
+                        className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center transition-all ${managementMode ? 'bg-amber-100 text-amber-800 ring-2 ring-amber-400' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                     >
+                        <Briefcase size={16} className="mr-2" />
+                        {managementMode ? 'Modo Gestión Activo' : 'Gestionar Turnos'}
+                    </button>
+                    {managementMode && (
+                        <button onClick={() => setShowShiftModal(true)} className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-bold shadow-lg hover:bg-primary/90 flex items-center">
+                            <Plus size={16} className="mr-2" /> Asignar Masivo
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+
+        {/* FILTERS - Hide for workers to keep it simple */}
+        {!isWorker && (
+            <div className="flex space-x-2 bg-white p-2 rounded-xl border border-slate-200 shadow-sm w-fit">
+                <div className="flex items-center px-2 text-slate-400"><Filter size={16} /></div>
+                {isAdmin && (
+                    <select className="bg-transparent text-sm border-r border-slate-200 pr-2 outline-none" value={selectedDeptId} onChange={e => setSelectedDeptId(e.target.value)}>
                         <option value="all">Todos Depts.</option>
                         {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
                 )}
-                
-                <select 
-                    className="bg-transparent text-sm outline-none"
-                    value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}
-                >
+                <select className="bg-transparent text-sm outline-none" value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
                     <option value="all">Todos Usuarios</option>
                     {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
             </div>
-        </div>
+        )}
 
         {/* CALENDAR CONTROLS */}
         <div className="bg-white rounded-t-2xl border border-slate-200 p-4 flex justify-between items-center shadow-sm z-10 relative">
@@ -210,29 +228,48 @@ const CalendarView = () => {
             </div>
         </div>
 
-        {/* CONFLICTS SECTION */}
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6">
-             <h4 className="font-bold text-amber-800 flex items-center mb-4">
-                 <AlertTriangle className="mr-2" size={20} /> Conflictos Detectados ({conflicts.length})
-             </h4>
-             {conflicts.length === 0 ? (
-                 <p className="text-sm text-amber-700/70">No hay coincidencias de ausencias en el mismo departamento para este mes.</p>
-             ) : (
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                     {conflicts.map((c, i) => (
-                         <div key={i} className="bg-white p-3 rounded-lg border border-amber-100 shadow-sm">
-                             <p className="text-xs font-bold text-slate-500 uppercase mb-1">{c.date}</p>
-                             <p className="text-sm font-semibold text-slate-800">{c.deptName}</p>
-                             <div className="mt-2 flex flex-wrap gap-1">
-                                 {c.users.map((u, idx) => (
-                                     <span key={idx} className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{u}</span>
-                                 ))}
-                             </div>
-                         </div>
-                     ))}
-                 </div>
-             )}
-        </div>
+        {/* MODAL: SHIFT ASSIGNMENT */}
+        {showShiftModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-lg text-slate-800">Asignar Turnos</h3>
+                        <button onClick={() => setShowShiftModal(false)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                    </div>
+                    <form onSubmit={handleAssignShifts} className="space-y-4">
+                        <div>
+                            <label className="block text-xs uppercase font-bold text-slate-500 mb-1">Empleado</label>
+                            <select required className="w-full border rounded p-2 text-sm" value={shiftForm.userId} onChange={e => setShiftForm({...shiftForm, userId: e.target.value})}>
+                                <option value="">Seleccionar...</option>
+                                {availableUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-xs uppercase font-bold text-slate-500 mb-1">Desde</label>
+                                <input type="date" required className="w-full border rounded p-2 text-sm" value={shiftForm.startDate} onChange={e => setShiftForm({...shiftForm, startDate: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-xs uppercase font-bold text-slate-500 mb-1">Hasta</label>
+                                <input type="date" required className="w-full border rounded p-2 text-sm" value={shiftForm.endDate} onChange={e => setShiftForm({...shiftForm, endDate: e.target.value})} />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs uppercase font-bold text-slate-500 mb-1">Turno</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button type="button" onClick={() => setShiftForm({...shiftForm, shiftType: ShiftType.MORNING})} className={`p-2 rounded border text-sm font-medium flex items-center justify-center ${shiftForm.shiftType === ShiftType.MORNING ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                                    <Sun size={16} className="mr-2" /> Mañana
+                                </button>
+                                <button type="button" onClick={() => setShiftForm({...shiftForm, shiftType: ShiftType.AFTERNOON})} className={`p-2 rounded border text-sm font-medium flex items-center justify-center ${shiftForm.shiftType === ShiftType.AFTERNOON ? 'bg-indigo-100 border-indigo-300 text-indigo-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+                                    <Moon size={16} className="mr-2" /> Tarde
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold hover:bg-slate-700">Guardar Turnos</button>
+                    </form>
+                </div>
+            </div>
+        )}
     </div>
   );
 };

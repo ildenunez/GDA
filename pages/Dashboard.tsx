@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { RequestStatus } from '../types';
+import { RequestStatus, ShiftType } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Clock, CheckCircle, AlertCircle, Trash2, X } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Trash2, X, CalendarDays, Sun, Moon, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
@@ -21,7 +22,7 @@ const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
 );
 
 const Dashboard = () => {
-  const { currentUser, requests, overtime, absenceTypes, deleteRequest } = useData();
+  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts } = useData();
   
   // Confirmation Modal State
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -61,6 +62,14 @@ const Dashboard = () => {
     }, 0);
 
   const remainingVacationDays = totalVacationDays - usedVacationDays;
+
+  // UPCOMING SHIFT LOGIC
+  const todayStr = new Date().toISOString().split('T')[0];
+  const myUpcomingShifts = shifts
+      .filter(s => s.userId === currentUser?.id && s.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  
+  const nextShift = myUpcomingShifts[0];
 
   // Chart Data
   const requestsByType = absenceTypes.map(type => ({
@@ -118,46 +127,84 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recent Activity */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">Actividad Reciente</h3>
-          <div className="space-y-6">
-            {myRequests.slice(0, 5).map(req => {
-              const type = absenceTypes.find(t => t.id === req.typeId);
-              const deducts = type?.deductsDays || type?.name.toLowerCase().includes('vacacion');
-              return (
-                <div key={req.id} className="flex items-center justify-between pb-4 border-b border-slate-50 last:border-0 last:pb-0 group">
-                   <div className="flex items-center space-x-4">
-                     <div className={`w-2 h-12 rounded-full ${req.status === RequestStatus.APPROVED ? 'bg-emerald-500' : req.status === RequestStatus.REJECTED ? 'bg-red-500' : 'bg-amber-500'}`}></div>
-                     <div>
-                       <div className="flex items-center gap-2">
-                           <p className="font-semibold text-slate-800">{type?.name}</p>
-                           {deducts ? (
-                               <span className="text-[10px] bg-red-50 text-red-600 px-1 rounded border border-red-100">Descuenta</span>
-                           ) : (
-                               <span className="text-[10px] bg-slate-100 text-slate-500 px-1 rounded border border-slate-200">No descuenta</span>
-                           )}
-                       </div>
-                       <p className="text-sm text-slate-500">{new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</p>
-                     </div>
-                   </div>
-                   <div className="flex items-center space-x-3">
-                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${req.status === RequestStatus.APPROVED ? 'bg-emerald-100 text-emerald-700' : req.status === RequestStatus.REJECTED ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                         {req.status === RequestStatus.PENDING ? 'Pendiente' : req.status === RequestStatus.APPROVED ? 'Aprobado' : 'Rechazado'}
-                       </span>
-                       <button 
-                         onClick={() => handleDeleteClick(req.id)}
-                         className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                         title="Eliminar solicitud"
-                       >
-                           <Trash2 size={16} />
-                       </button>
-                   </div>
+        <div className="lg:col-span-2 space-y-6">
+            {/* NEXT SHIFT CARD (NEW) */}
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl shadow-lg p-6 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-10 -translate-y-10">
+                    <CalendarDays size={120} />
                 </div>
-              )
-            })}
-             {myRequests.length === 0 && <p className="text-slate-400 text-sm">No hay actividad reciente.</p>}
-          </div>
+                <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                    <div>
+                        <h3 className="text-lg font-bold mb-1 flex items-center">
+                            <CalendarDays className="mr-2" size={20} /> Mis Turnos
+                        </h3>
+                        {nextShift ? (
+                             <div className="mt-4">
+                                <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Próximo Turno</p>
+                                <div className="flex items-center space-x-4">
+                                    <span className="text-3xl font-bold">
+                                        {new Date(nextShift.date).getDate()}
+                                    </span>
+                                    <div className="border-l border-slate-600 pl-4">
+                                        <p className="font-medium text-lg capitalize">{new Date(nextShift.date).toLocaleString('es-ES', { month: 'long', weekday: 'long' })}</p>
+                                        <div className={`flex items-center text-sm font-bold mt-1 ${nextShift.shiftType === ShiftType.MORNING ? 'text-amber-400' : 'text-indigo-400'}`}>
+                                            {nextShift.shiftType === ShiftType.MORNING ? <Sun size={16} className="mr-1.5" /> : <Moon size={16} className="mr-1.5" />}
+                                            {nextShift.shiftType === ShiftType.MORNING ? 'MAÑANA' : 'TARDE'}
+                                        </div>
+                                    </div>
+                                </div>
+                             </div>
+                        ) : (
+                            <p className="mt-4 text-slate-400 text-sm">No tienes turnos asignados próximamente.</p>
+                        )}
+                    </div>
+                    <Link to="/calendar" className="mt-6 sm:mt-0 px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg text-sm font-medium transition-colors flex items-center group">
+                        Ver Calendario Completo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+              <h3 className="text-lg font-bold text-slate-800 mb-6">Actividad Reciente</h3>
+              <div className="space-y-6">
+                {myRequests.slice(0, 5).map(req => {
+                  const type = absenceTypes.find(t => t.id === req.typeId);
+                  const deducts = type?.deductsDays || type?.name.toLowerCase().includes('vacacion');
+                  return (
+                    <div key={req.id} className="flex items-center justify-between pb-4 border-b border-slate-50 last:border-0 last:pb-0 group">
+                       <div className="flex items-center space-x-4">
+                         <div className={`w-2 h-12 rounded-full ${req.status === RequestStatus.APPROVED ? 'bg-emerald-500' : req.status === RequestStatus.REJECTED ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                         <div>
+                           <div className="flex items-center gap-2">
+                               <p className="font-semibold text-slate-800">{type?.name}</p>
+                               {deducts ? (
+                                   <span className="text-[10px] bg-red-50 text-red-600 px-1 rounded border border-red-100">Descuenta</span>
+                               ) : (
+                                   <span className="text-[10px] bg-slate-100 text-slate-500 px-1 rounded border border-slate-200">No descuenta</span>
+                               )}
+                           </div>
+                           <p className="text-sm text-slate-500">{new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</p>
+                         </div>
+                       </div>
+                       <div className="flex items-center space-x-3">
+                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${req.status === RequestStatus.APPROVED ? 'bg-emerald-100 text-emerald-700' : req.status === RequestStatus.REJECTED ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                             {req.status === RequestStatus.PENDING ? 'Pendiente' : req.status === RequestStatus.APPROVED ? 'Aprobado' : 'Rechazado'}
+                           </span>
+                           <button 
+                             onClick={() => handleDeleteClick(req.id)}
+                             className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                             title="Eliminar solicitud"
+                           >
+                               <Trash2 size={16} />
+                           </button>
+                       </div>
+                    </div>
+                  )
+                })}
+                 {myRequests.length === 0 && <p className="text-slate-400 text-sm">No hay actividad reciente.</p>}
+              </div>
+            </div>
         </div>
 
         {/* Chart */}

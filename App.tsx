@@ -90,11 +90,10 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
             <SidebarItem to="/" icon={LayoutDashboard} label="Dashboard" active={location.pathname === '/'} onClick={closeMenu} />
             <SidebarItem to="/myspace" icon={Calendar} label="Mi Espacio" active={location.pathname === '/myspace'} onClick={closeMenu} />
             
+            <SidebarItem to="/calendar" icon={CalendarDays} label="Calendario" active={location.pathname === '/calendar'} onClick={closeMenu} />
+            
             {isSupervisorOrAdmin && (
-              <>
-                <SidebarItem to="/team" icon={Users} label="Mi Equipo" active={location.pathname === '/team'} onClick={closeMenu} />
-                <SidebarItem to="/calendar" icon={CalendarDays} label="Calendario Equipo" active={location.pathname === '/calendar'} onClick={closeMenu} />
-              </>
+              <SidebarItem to="/team" icon={Users} label="Mi Equipo" active={location.pathname === '/team'} onClick={closeMenu} />
             )}
             
             {isAdmin && (
@@ -226,7 +225,10 @@ const App = () => {
           <Route path="/" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
           <Route path="/myspace" element={<ProtectedRoute><Layout><MySpace /></Layout></ProtectedRoute>} />
           <Route path="/team" element={<ProtectedRoute allowedRoles={[Role.SUPERVISOR, Role.ADMIN]}><Layout><TeamManagement /></Layout></ProtectedRoute>} />
-          <Route path="/calendar" element={<ProtectedRoute allowedRoles={[Role.SUPERVISOR, Role.ADMIN]}><Layout><CalendarView /></Layout></ProtectedRoute>} />
+          
+          {/* UPDATED: Calendar accessible to all authenticated roles */}
+          <Route path="/calendar" element={<ProtectedRoute allowedRoles={[Role.WORKER, Role.SUPERVISOR, Role.ADMIN]}><Layout><CalendarView /></Layout></ProtectedRoute>} />
+          
           <Route path="/admin" element={<ProtectedRoute allowedRoles={[Role.ADMIN]}><Layout><AdminPanel /></Layout></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><Layout><AIAssistant /></Layout></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
