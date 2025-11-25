@@ -5,6 +5,8 @@ import { useData } from '../context/DataContext';
 import { Mail, Lock, ArrowRight, User, Shield, Briefcase, AlertCircle } from 'lucide-react';
 import { Role } from '../types';
 
+const LOGO_URL = "https://img.evbuc.com/https%3A%2F%2Fcdn.evbuc.com%2Fimages%2F677236879%2F73808960223%2F1%2Foriginal.20240118-071537?w=284&auto=format%2Ccompress&q=75&sharp=10&rect=0%2C0%2C284%2C284&s=138022d792466dd1773752da55468b5b";
+
 const Login = () => {
   const { login, users } = useData();
   const navigate = useNavigate();
@@ -55,9 +57,7 @@ const Login = () => {
           </div>
 
           <div className="relative z-10">
-              <div className="w-12 h-12 bg-gradient-to-br from-primary to-secondary rounded-xl shadow-lg shadow-primary/40 flex items-center justify-center mb-6">
-                  <span className="text-white font-bold text-xl">R</span>
-              </div>
+              <img src={LOGO_URL} alt="Company Logo" className="w-24 h-24 mb-6 rounded-xl object-contain bg-white/10 p-2 backdrop-blur-sm border border-white/10" />
               <h1 className="text-5xl font-bold text-white mb-6 leading-tight">
                   Gestión de Talento <br/> 
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Simplificada.</span>

@@ -15,6 +15,8 @@ import AIAssistant from './pages/AIAssistant';
 import Profile from './pages/Profile';
 import CalendarView from './pages/CalendarView';
 
+const LOGO_URL = "https://img.evbuc.com/https%3A%2F%2Fcdn.evbuc.com%2Fimages%2F677236879%2F73808960223%2F1%2Foriginal.20240118-071537?w=284&auto=format%2Ccompress&q=75&sharp=10&rect=0%2C0%2C284%2C284&s=138022d792466dd1773752da55468b5b";
+
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles?: Role[] }) => {
   const { currentUser } = useData();
   if (!currentUser) return <Navigate to="/login" />;
@@ -81,8 +83,8 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
       {/* Sidebar */}
       <aside className={`fixed z-30 inset-y-0 left-0 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col">
-          <div className="h-20 flex items-center px-8 border-b border-slate-100">
-            <div className="w-8 h-8 bg-gradient-to-tr from-primary to-secondary rounded-lg mr-3"></div>
+          <div className="h-20 flex items-center px-6 border-b border-slate-100">
+            <img src={LOGO_URL} alt="Logo" className="w-10 h-10 rounded-lg mr-3 object-contain" />
             <h1 className="text-xl font-bold text-slate-800 tracking-tight">RRHH CHS</h1>
           </div>
           
