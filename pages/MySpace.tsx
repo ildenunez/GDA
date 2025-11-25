@@ -182,7 +182,7 @@ const MySpace = () => {
                                     <td className="py-4 text-slate-600">
                                         <div className="flex flex-col">
                                            <span className="font-medium">{new Date(req.startDate).toLocaleDateString()}</span>
-                                           <span className="text-xs text-slate-400">al {new Date(req.endDate).toLocaleDateString()}</p>
+                                           <span className="text-xs text-slate-400">al {new Date(req.endDate).toLocaleDateString()}</span>
                                         </div>
                                     </td>
                                     <td className="py-4 text-right">

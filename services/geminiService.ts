@@ -1,7 +1,9 @@
+
 import { GoogleGenAI } from "@google/genai";
 
-// Use standard process.env.API_KEY as per guidelines
-const apiKey = process.env.API_KEY;
+// Use standard Vite env var access for Vercel
+// Cast to any to avoid TS errors without proper type definitions
+const apiKey = (import.meta as any).env.VITE_GOOGLE_API_KEY;
 
 // Initialize conditionally to prevent crashes if key is missing during build
 let ai: GoogleGenAI | null = null;
