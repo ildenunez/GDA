@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { DataProvider, useData } from './context/DataContext';
-import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, Bot, ChevronRight, UserCircle, CalendarDays, CheckCheck } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, ChevronRight, UserCircle, CalendarDays, CheckCheck } from 'lucide-react';
 import { Role, RequestStatus } from './types';
 
 // Pages
@@ -11,7 +11,6 @@ import MySpace from './pages/MySpace';
 import TeamManagement from './pages/TeamManagement';
 import AdminPanel from './pages/AdminPanel';
 import Login from './pages/Login';
-import AIAssistant from './pages/AIAssistant';
 import Profile from './pages/Profile';
 import CalendarView from './pages/CalendarView';
 
@@ -101,8 +100,6 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
             {isAdmin && (
               <SidebarItem to="/admin" icon={Settings} label="Administración" active={location.pathname === '/admin'} onClick={closeMenu} />
             )}
-
-            <SidebarItem to="/ai-assistant" icon={Bot} label="Copiloto RRHH" active={location.pathname === '/ai-assistant'} onClick={closeMenu} />
             
             <div className="pt-4 border-t border-slate-100 mt-4">
                  <SidebarItem to="/profile" icon={UserCircle} label="Mi Perfil" active={location.pathname === '/profile'} onClick={closeMenu} />
@@ -232,7 +229,6 @@ const App = () => {
           <Route path="/calendar" element={<ProtectedRoute allowedRoles={[Role.WORKER, Role.SUPERVISOR, Role.ADMIN]}><Layout><CalendarView /></Layout></ProtectedRoute>} />
           
           <Route path="/admin" element={<ProtectedRoute allowedRoles={[Role.ADMIN]}><Layout><AdminPanel /></Layout></ProtectedRoute>} />
-          <Route path="/ai-assistant" element={<ProtectedRoute><Layout><AIAssistant /></Layout></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
         </Routes>
       </Router>

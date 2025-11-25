@@ -69,13 +69,6 @@ const Login = () => {
 
           <div className="relative z-10 bg-white/5 backdrop-blur-md rounded-2xl p-6 border border-white/10 max-w-md">
               <p className="text-slate-300 italic mb-4">"La eficiencia no es un acto, es un hábito. Esta plataforma transforma la gestión diaria en una ventaja estratégica."</p>
-              <div className="flex items-center">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">IA</div>
-                  <div className="ml-3">
-                      <p className="text-white text-sm font-semibold">Gemini Assistant</p>
-                      <p className="text-slate-500 text-xs">Integrado en RRHH CHS</p>
-                  </div>
-              </div>
           </div>
       </div>
 
