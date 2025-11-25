@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
-import { Role, RequestStatus, AbsenceType, Department, User, OvertimeRecord, RedemptionType, EmailTemplate, ShiftType } from '../types';
+import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock } from 'lucide-react';
+import { Role, RequestStatus, AbsenceType, Department, User, OvertimeRecord, RedemptionType, EmailTemplate, ShiftType, ShiftTypeDefinition } from '../types';
 
 const AdminPanel = () => {
   const { 
@@ -10,7 +10,7 @@ const AdminPanel = () => {
       departments, addDepartment, updateDepartment, deleteDepartment,
       users, updateUser, adjustUserVacation, addUser, requests, deleteRequest, overtime, addOvertime, deleteOvertime,
       notifications, importDatabase, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig,
-      shifts, addShift, deleteShift
+      shifts, addShift, deleteShift, shiftTypes, createShiftType, deleteShiftType
   } = useData();
   
   const [activeTab, setActiveTab] = useState<'config' | 'users' | 'comms' | 'shifts'>('config');
@@ -18,6 +18,9 @@ const AdminPanel = () => {
   // --- CONFIG TAB STATES ---
   const [newType, setNewType] = useState({ name: '', isClosedRange: false, color: 'bg-gray-100 text-gray-800', rangeStart: '', rangeEnd: '', deductsDays: false });
   const [newDept, setNewDept] = useState({ name: '', supervisorIds: [] as string[] });
+  
+  // New Shift Type Form
+  const [newShiftType, setNewShiftType] = useState({ name: '', color: 'bg-blue-100 text-blue-800 border-blue-300', startTime: '08:00', endTime: '15:00' });
   
   // Edit States
   const [editingType, setEditingType] = useState<AbsenceType | null>(null);
@@ -31,7 +34,7 @@ const AdminPanel = () => {
   // --- SHIFTS TAB STATES ---
   const [shiftCurrentDate, setShiftCurrentDate] = useState(new Date());
   const [shiftSelectedUserId, setShiftSelectedUserId] = useState<string>('');
-  const [paintTool, setPaintTool] = useState<ShiftType | 'ERASE'>(ShiftType.MORNING);
+  const [paintTool, setPaintTool] = useState<string>('MORNING'); // Default to ID 'MORNING' or 'ERASE'
 
   // --- USER TAB STATES ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,6 +83,12 @@ const AdminPanel = () => {
     }
     createAbsenceType(typePayload);
     setNewType({ name: '', isClosedRange: false, color: 'bg-gray-100 text-gray-800', rangeStart: '', rangeEnd: '', deductsDays: false });
+  };
+  
+  const handleCreateShiftType = (e: React.FormEvent) => {
+      e.preventDefault();
+      createShiftType(newShiftType);
+      setNewShiftType({ name: '', color: 'bg-blue-100 text-blue-800 border-blue-300', startTime: '08:00', endTime: '15:00' });
   };
 
   const handleUpdateType = (e: React.FormEvent) => {
@@ -345,7 +354,7 @@ const AdminPanel = () => {
       
       const days = [];
       for (let i = 0; i < firstDay; i++) {
-          days.push(<div key={`empty-${i}`} className="h-24 bg-slate-50 border-r border-b border-slate-100"></div>);
+          days.push(<div key={`empty-${i}`} className="min-h-[100px] bg-slate-50 border-r border-b border-slate-100"></div>);
       }
       
       for (let d = 1; d <= daysInMonth; d++) {
@@ -353,37 +362,41 @@ const AdminPanel = () => {
           const dateStr = formatDate(date);
           const currentShift = shifts.find(s => s.userId === shiftSelectedUserId && s.date === dateStr);
           
+          let shiftDef = null;
+          if (currentShift) {
+              shiftDef = shiftTypes.find(t => t.id === currentShift.shiftType);
+          }
+          
+          // Paint Tool Preview color
+          let previewColor = 'bg-slate-200';
+          if (paintTool !== 'ERASE') {
+               const toolDef = shiftTypes.find(t => t.id === paintTool);
+               if (toolDef) previewColor = toolDef.color;
+          }
+
           days.push(
               <div 
                 key={d} 
                 onClick={() => handleShiftDayClick(d)}
-                className={`h-24 border-r border-b border-slate-100 relative cursor-pointer hover:bg-slate-50 transition-colors group select-none`}
+                className={`min-h-[100px] border-r border-b border-slate-100 relative cursor-pointer hover:bg-slate-50 transition-colors group select-none`}
               >
                   <span className="absolute top-2 left-2 text-xs font-semibold text-slate-400">{d}</span>
                   
-                  {currentShift && (
-                      <div className={`absolute inset-2 rounded-lg flex flex-col items-center justify-center shadow-sm animate-in zoom-in duration-200 ${
-                          currentShift.shiftType === ShiftType.MORNING ? 'bg-amber-100 border border-amber-200' : 'bg-indigo-100 border border-indigo-200'
-                      }`}>
-                          {currentShift.shiftType === ShiftType.MORNING ? (
-                              <>
-                                <Sun size={24} className="text-amber-500 mb-1" />
-                                <span className="text-[10px] font-bold text-amber-700">MAÑANA</span>
-                              </>
-                          ) : (
-                              <>
-                                <Moon size={24} className="text-indigo-500 mb-1" />
-                                <span className="text-[10px] font-bold text-indigo-700">TARDE</span>
-                              </>
-                          )}
+                  {currentShift && shiftDef && (
+                      <div className={`absolute inset-2 rounded-lg flex flex-col items-center justify-center shadow-sm animate-in zoom-in duration-200 ${shiftDef.color}`}>
+                          <Clock size={20} className="mb-1 opacity-70" />
+                          <span className="text-[10px] font-bold text-center leading-tight uppercase px-1">{shiftDef.name}</span>
+                          <span className="text-[9px] opacity-75">{shiftDef.startTime}-{shiftDef.endTime}</span>
                       </div>
                   )}
                   
                   {/* Hover Preview of Paint Tool */}
                   <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 pointer-events-none flex items-center justify-center">
-                       {paintTool === ShiftType.MORNING && <Sun className="text-amber-500/50" />}
-                       {paintTool === ShiftType.AFTERNOON && <Moon className="text-indigo-500/50" />}
-                       {paintTool === 'ERASE' && <Eraser className="text-red-500/50" />}
+                       {paintTool === 'ERASE' ? (
+                           <Eraser className="text-red-500/50" />
+                       ) : (
+                           <div className={`w-8 h-8 rounded-full opacity-50 ${previewColor}`}></div>
+                       )}
                   </div>
               </div>
           );
@@ -537,12 +550,55 @@ const AdminPanel = () => {
                            </form>
                       </div>
                   </div>
+                  
+                  {/* SHIFT TYPES CONFIG */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
+                      <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                          <Clock className="mr-2 text-indigo-600" size={20} /> Tipos de Turno
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                               {shiftTypes.map(type => (
+                                   <div key={type.id} className={`flex items-center justify-between p-3 border rounded-lg ${type.color}`}>
+                                       <div>
+                                           <p className="font-bold text-sm">{type.name}</p>
+                                           <p className="text-xs opacity-75">{type.startTime} - {type.endTime}</p>
+                                       </div>
+                                       <button onClick={() => deleteShiftType(type.id)} className="p-1 hover:bg-white/20 rounded"><Trash2 size={14} /></button>
+                                   </div>
+                               ))}
+                           </div>
+                           <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                               <h4 className="text-sm font-semibold text-slate-600 mb-3">Crear Tipo de Turno</h4>
+                               <form onSubmit={handleCreateShiftType} className="space-y-3">
+                                   <input type="text" placeholder="Nombre (ej. Guardia, Noche)" className="w-full border rounded p-2 text-sm" value={newShiftType.name} onChange={e => setNewShiftType({...newShiftType, name: e.target.value})} required />
+                                   <div className="grid grid-cols-2 gap-2">
+                                       <input type="time" className="border rounded p-2 text-sm" value={newShiftType.startTime} onChange={e => setNewShiftType({...newShiftType, startTime: e.target.value})} required />
+                                       <input type="time" className="border rounded p-2 text-sm" value={newShiftType.endTime} onChange={e => setNewShiftType({...newShiftType, endTime: e.target.value})} required />
+                                   </div>
+                                   <select className="w-full border rounded p-2 text-sm" value={newShiftType.color} onChange={e => setNewShiftType({...newShiftType, color: e.target.value})}>
+                                       <option value="bg-blue-100 text-blue-800 border-blue-300">Azul</option>
+                                       <option value="bg-green-100 text-green-800 border-green-300">Verde</option>
+                                       <option value="bg-amber-100 text-amber-800 border-amber-300">Ámbar (Mañana)</option>
+                                       <option value="bg-indigo-100 text-indigo-800 border-indigo-300">Índigo (Tarde)</option>
+                                       <option value="bg-slate-800 text-slate-200 border-slate-600">Oscuro (Noche)</option>
+                                       <option value="bg-purple-100 text-purple-800 border-purple-300">Morado</option>
+                                       <option value="bg-pink-100 text-pink-800 border-pink-300">Rosa</option>
+                                       <option value="bg-red-100 text-red-800 border-red-300">Rojo</option>
+                                   </select>
+                                   <button type="submit" className="w-full bg-indigo-600 text-white py-2 rounded text-sm hover:bg-indigo-700 font-medium">Crear Turno</button>
+                               </form>
+                           </div>
+                      </div>
+                  </div>
                </div>
            </div>
        )}
 
+       {/* ... Comms Tab ... */}
        {activeTab === 'comms' && (
            <div className="space-y-6">
+                {/* ... (Existing Comms Code) ... */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                    <h3 className="font-bold text-slate-800 mb-4 flex items-center">
                       <Mail className="mr-2 text-primary" size={20} /> Plantillas de Email
@@ -640,7 +696,7 @@ const AdminPanel = () => {
        {activeTab === 'shifts' && (
            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
                {/* SIDEBAR: CONTROLS */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col space-y-6">
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col space-y-6 overflow-y-auto">
                    <div>
                        <h3 className="font-bold text-slate-800 mb-1">Gestión Visual</h3>
                        <p className="text-xs text-slate-500">Selecciona usuario y dibuja en el calendario.</p>
@@ -664,33 +720,22 @@ const AdminPanel = () => {
                        <div className="animate-in fade-in slide-in-from-left-4 duration-300">
                            <label className="block text-xs font-bold text-slate-500 uppercase mb-3">2. Elegir Herramienta</label>
                            <div className="space-y-3">
-                               <button 
-                                   onClick={() => setPaintTool(ShiftType.MORNING)}
-                                   className={`w-full flex items-center p-3 rounded-xl border transition-all ${paintTool === ShiftType.MORNING ? 'bg-amber-50 border-amber-500 ring-1 ring-amber-500' : 'bg-white border-slate-200 hover:border-amber-300'}`}
-                               >
-                                   <div className={`p-2 rounded-lg mr-3 ${paintTool === ShiftType.MORNING ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-600'}`}>
-                                       <Sun size={20} />
-                                   </div>
-                                   <div className="text-left">
-                                       <span className="block font-bold text-slate-700 text-sm">Turno Mañana</span>
-                                       <span className="text-xs text-slate-500">Añadir turno M</span>
-                                   </div>
-                                   {paintTool === ShiftType.MORNING && <Check size={16} className="ml-auto text-amber-600" />}
-                               </button>
-
-                               <button 
-                                   onClick={() => setPaintTool(ShiftType.AFTERNOON)}
-                                   className={`w-full flex items-center p-3 rounded-xl border transition-all ${paintTool === ShiftType.AFTERNOON ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'bg-white border-slate-200 hover:border-indigo-300'}`}
-                               >
-                                   <div className={`p-2 rounded-lg mr-3 ${paintTool === ShiftType.AFTERNOON ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-600'}`}>
-                                       <Moon size={20} />
-                                   </div>
-                                   <div className="text-left">
-                                       <span className="block font-bold text-slate-700 text-sm">Turno Tarde</span>
-                                       <span className="text-xs text-slate-500">Añadir turno T</span>
-                                   </div>
-                                   {paintTool === ShiftType.AFTERNOON && <Check size={16} className="ml-auto text-indigo-600" />}
-                               </button>
+                               {shiftTypes.map(type => (
+                                   <button 
+                                       key={type.id}
+                                       onClick={() => setPaintTool(type.id)}
+                                       className={`w-full flex items-center p-3 rounded-xl border transition-all text-left ${paintTool === type.id ? 'bg-slate-800 text-white border-slate-800 ring-2 ring-slate-400' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                                   >
+                                       <div className={`p-2 rounded-lg mr-3 shadow-sm ${type.color}`}>
+                                           <Clock size={16} />
+                                       </div>
+                                       <div>
+                                           <span className="block font-bold text-sm">{type.name}</span>
+                                           <span className="text-[10px] opacity-75">{type.startTime} - {type.endTime}</span>
+                                       </div>
+                                       {paintTool === type.id && <Check size={16} className="ml-auto" />}
+                                   </button>
+                               ))}
 
                                <button 
                                    onClick={() => setPaintTool('ERASE')}
@@ -713,16 +758,16 @@ const AdminPanel = () => {
                        <div className="bg-blue-50 p-3 rounded-lg flex items-start">
                            <div className="text-blue-500 mr-2 mt-0.5"><Palette size={16} /></div>
                            <p className="text-xs text-blue-700 leading-relaxed">
-                               <strong>Instrucciones:</strong> Haz clic en los días del calendario para aplicar la herramienta seleccionada. Los cambios se guardan automáticamente.
+                               <strong>Instrucciones:</strong> Haz clic en los días del calendario para aplicar el turno seleccionado.
                            </p>
                        </div>
                    </div>
                </div>
                
                {/* MAIN CALENDAR AREA */}
-               <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+               <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-full">
                    {/* Calendar Header */}
-                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 flex-shrink-0">
                        <button onClick={() => setShiftCurrentDate(new Date(shiftCurrentDate.getFullYear(), shiftCurrentDate.getMonth() - 1, 1))} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronLeft /></button>
                        <h3 className="text-lg font-bold text-slate-800 capitalize">
                            {shiftCurrentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
@@ -730,22 +775,24 @@ const AdminPanel = () => {
                        <button onClick={() => setShiftCurrentDate(new Date(shiftCurrentDate.getFullYear(), shiftCurrentDate.getMonth() + 1, 1))} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronRight /></button>
                    </div>
                    
-                   {/* Calendar Grid */}
-                   <div className="flex-1 overflow-auto bg-slate-100 p-1">
+                   {/* Calendar Header Row */}
+                   <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200 flex-shrink-0">
+                       {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
+                           <div key={day} className="py-2 text-center text-xs font-bold text-slate-500 uppercase">
+                               {day}
+                           </div>
+                       ))}
+                   </div>
+                   
+                   {/* Calendar Grid Container with Scroll */}
+                   <div className="flex-1 overflow-y-auto bg-white custom-scrollbar">
                        {!shiftSelectedUserId ? (
                            <div className="h-full flex flex-col items-center justify-center text-slate-400">
                                <CalendarDays size={48} className="mb-4 opacity-50" />
                                <p>Selecciona un trabajador para comenzar a asignar turnos.</p>
                            </div>
                        ) : (
-                           <div className="h-full bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200 grid grid-cols-7 grid-rows-[auto_1fr]">
-                               {/* Days Header */}
-                               {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
-                                   <div key={day} className="py-2 text-center text-xs font-bold text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
-                                       {day}
-                                   </div>
-                               ))}
-                               {/* Days Grid */}
+                           <div className="grid grid-cols-7 auto-rows-fr">
                                {renderShiftCalendar()}
                            </div>
                        )}
@@ -754,6 +801,7 @@ const AdminPanel = () => {
            </div>
        )}
 
+       {/* ... Users Tab ... */}
        {activeTab === 'users' && (
            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -844,7 +892,7 @@ const AdminPanel = () => {
            </div>
        )}
 
-       {/* MODAL: USER DETAIL (Same as before but with Color Picker in Profile section) */}
+       {/* MODAL: USER DETAIL (Same as before) */}
        {selectedUser && (
            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -852,7 +900,7 @@ const AdminPanel = () => {
                        <div className="flex items-center space-x-3"><img src={selectedUser.avatarUrl} className="w-10 h-10 rounded-full bg-slate-200" alt="" /><div><h3 className="font-bold text-slate-800">{selectedUser.name}</h3></div></div>
                        <button onClick={() => setSelectedUser(null)}><X /></button>
                    </div>
-                   <div className="flex border-b border-slate-100"><button onClick={() => setActiveUserTab('info')} className={`flex-1 py-3 text-sm font-medium ${activeUserTab === 'info' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`}>Perfil</button><button onClick={() => setActiveUserTab('absences')} className={`flex-1 py-3 text-sm font-medium ${activeUserTab === 'absences' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`}>Ausencias</button></div>
+                   <div className="flex border-b border-slate-100"><button onClick={() => setActiveUserTab('info')} className={`flex-1 py-3 text-sm font-medium ${activeUserTab === 'info' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`}>Perfil</button><button onClick={() => setActiveUserTab('absences')} className={`flex-1 py-3 text-sm font-medium ${activeUserTab === 'absences' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`}>Ausencias</button><button onClick={() => setActiveUserTab('overtime')} className={`flex-1 py-3 text-sm font-medium ${activeUserTab === 'overtime' ? 'text-primary border-b-2 border-primary' : 'text-slate-500'}`}>Horas</button></div>
 
                    <div className="p-6 overflow-y-auto bg-slate-50/50 flex-1">
                        {activeUserTab === 'info' && (
@@ -861,14 +909,89 @@ const AdminPanel = () => {
                                <div><label className="text-xs uppercase text-slate-500">Nombre</label><input type="text" className="w-full border-b py-1 text-sm" value={selectedUser.name} onChange={e => updateUser(selectedUser.id, { name: e.target.value })} /></div>
                                <div><label className="text-xs uppercase text-slate-500">Color Calendario</label><div className="flex items-center mt-1"><input type="color" className="w-8 h-8 rounded border p-0.5" value={selectedUser.calendarColor || '#3b82f6'} onChange={e => updateUser(selectedUser.id, { calendarColor: e.target.value })} /></div></div>
                                <div><label className="text-xs uppercase text-slate-500">Contraseña</label><div className="flex space-x-2"><input type="text" className="w-full border-b py-1 text-sm" placeholder="Nueva contraseña" value={newPassword} onChange={e => setNewPassword(e.target.value)} /><button onClick={handleUpdatePassword} className="text-xs bg-slate-800 text-white px-3 rounded">Actualizar</button></div></div>
+                               
+                               <div className="mt-6 pt-4 border-t border-slate-100">
+                                   <h4 className="font-bold text-slate-700 mb-2">Ajuste Manual de Vacaciones</h4>
+                                   <div className="flex space-x-2 mb-2">
+                                       <input type="number" className="w-20 border rounded p-1 text-sm" placeholder="Días" value={adjustDays} onChange={e => setAdjustDays(Number(e.target.value))} />
+                                       <input type="text" className="flex-1 border rounded p-1 text-sm" placeholder="Motivo (Opcional)" value={adjustReasonDays} onChange={e => setAdjustReasonDays(e.target.value)} />
+                                       <button onClick={handleAdjustDays} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">Ajustar</button>
+                                   </div>
+                                   <p className="text-xs text-slate-500">Saldo Actual: {22 + (selectedUser.vacationAdjustment || 0)} días</p>
+                                   
+                                   {selectedUser.vacationHistory && selectedUser.vacationHistory.length > 0 && (
+                                       <div className="mt-4">
+                                           <p className="text-xs font-bold text-slate-500 uppercase mb-2">Historial de Ajustes</p>
+                                           <div className="bg-slate-50 border rounded-lg max-h-32 overflow-y-auto">
+                                               {selectedUser.vacationHistory.map(log => (
+                                                   <div key={log.id} className="flex justify-between p-2 text-xs border-b last:border-0">
+                                                       <span>{new Date(log.date).toLocaleDateString()}</span>
+                                                       <span className="flex-1 mx-2 text-slate-600 truncate">{log.reason}</span>
+                                                       <span className={`font-bold ${log.days > 0 ? 'text-green-600' : 'text-red-600'}`}>{log.days > 0 ? '+' : ''}{log.days}</span>
+                                                   </div>
+                                               ))}
+                                           </div>
+                                       </div>
+                                   )}
+                               </div>
                            </div>
                        )}
-                       {/* ... Absences & Overtime Tabs (Same as before) ... */}
                        {activeUserTab === 'absences' && (
-                           <div className="bg-white rounded-xl border border-slate-200 p-4">
-                               {requests.filter(r => r.userId === selectedUser.id).map(r => (
-                                   <div key={r.id} className="flex justify-between border-b py-2"><span className="text-sm">{new Date(r.startDate).toLocaleDateString()}</span><span className="text-xs font-bold bg-slate-100 px-2 rounded">{r.status}</span></div>
-                               ))}
+                           <div className="bg-white rounded-xl border border-slate-200 p-0 overflow-hidden">
+                               <table className="w-full text-sm">
+                                   <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                                       <tr><th className="px-4 py-2 text-left">Fechas</th><th className="px-4 py-2 text-left">Tipo</th><th className="px-4 py-2 text-right">Estado</th><th className="px-4 py-2"></th></tr>
+                                   </thead>
+                                   <tbody className="divide-y divide-slate-100">
+                                       {requests.filter(r => r.userId === selectedUser.id).map(r => (
+                                           <tr key={r.id}>
+                                               <td className="px-4 py-3">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
+                                               <td className="px-4 py-3">{absenceTypes.find(t => t.id === r.typeId)?.name}</td>
+                                               <td className="px-4 py-3 text-right"><span className={`px-2 py-0.5 rounded text-xs ${r.status === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{r.status}</span></td>
+                                               <td className="px-4 py-3 text-right"><button onClick={() => handleDeleteRequestClick(r.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button></td>
+                                           </tr>
+                                       ))}
+                                   </tbody>
+                               </table>
+                           </div>
+                       )}
+                       {activeUserTab === 'overtime' && (
+                           <div className="space-y-4">
+                                <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                    <h4 className="font-bold text-slate-700 mb-2">Añadir/Restar Horas (Ajuste)</h4>
+                                    <div className="flex space-x-2">
+                                       <input type="number" className="w-20 border rounded p-1 text-sm" placeholder="Horas" value={adjustHours} onChange={e => setAdjustHours(Number(e.target.value))} />
+                                       <input type="text" className="flex-1 border rounded p-1 text-sm" placeholder="Motivo (Opcional)" value={adjustReasonHours} onChange={e => setAdjustReasonHours(e.target.value)} />
+                                       <button onClick={handleAdjustHours} className="bg-purple-600 text-white px-3 py-1 rounded text-sm">Guardar</button>
+                                   </div>
+                                </div>
+                               <div className="bg-white rounded-xl border border-slate-200 p-0 overflow-hidden">
+                                   <table className="w-full text-sm">
+                                       <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                                           <tr><th className="px-4 py-2 text-left">Fecha</th><th className="px-4 py-2 text-left">Concepto</th><th className="px-4 py-2 text-right">Horas</th><th className="px-4 py-2"></th></tr>
+                                       </thead>
+                                       <tbody className="divide-y divide-slate-100">
+                                           {overtime.filter(o => o.userId === selectedUser.id).map(o => (
+                                               <tr key={o.id}>
+                                                   <td className="px-4 py-3">{new Date(o.date).toLocaleDateString()}</td>
+                                                   <td className="px-4 py-3">
+                                                       {o.description}
+                                                       {o.redemptionType && <span className="ml-1 text-[10px] bg-purple-100 text-purple-700 px-1 rounded">CANJE</span>}
+                                                   </td>
+                                                   <td className="px-4 py-3 text-right font-bold">{o.hours > 0 ? `+${o.hours}` : o.hours}</td>
+                                                   <td className="px-4 py-3 text-right">
+                                                       <div className="flex justify-end space-x-2">
+                                                            {o.hours < 0 && o.status === RequestStatus.APPROVED && (
+                                                                <button onClick={() => setViewingRedemption(o)} className="text-blue-500 hover:text-blue-700"><Eye size={14} /></button>
+                                                            )}
+                                                            <button onClick={() => handleDeleteOvertimeClick(o.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                                       </div>
+                                                   </td>
+                                               </tr>
+                                           ))}
+                                       </tbody>
+                                   </table>
+                               </div>
                            </div>
                        )}
                    </div>
@@ -876,6 +999,71 @@ const AdminPanel = () => {
            </div>
        )}
        {/* ... Confirmation Modals ... */}
+        {confirmModal && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in duration-200">
+                  <div className="flex items-center text-slate-800 mb-4">
+                      <AlertCircle className="mr-2 text-slate-800" />
+                      <h3 className="font-bold text-lg">{confirmModal.title}</h3>
+                  </div>
+                  <p className="text-slate-600 text-sm mb-6">{confirmModal.message}</p>
+                  <div className="flex justify-end space-x-3">
+                      <button onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium text-sm">Cancelar</button>
+                      <button onClick={confirmModal.onConfirm} className="px-4 py-2 bg-slate-800 text-white hover:bg-slate-700 rounded-lg font-medium text-sm">Confirmar</button>
+                  </div>
+              </div>
+          </div>
+      )}
+      
+      {/* REDEMPTION DETAIL MODAL (ADMIN VIEW) */}
+      {viewingRedemption && (
+        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col print-area">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 no-print">
+                    <h3 className="font-bold text-slate-800">Detalle de Canje</h3>
+                    <button onClick={() => setViewingRedemption(null)} className="text-slate-400 hover:text-slate-600"><X /></button>
+                </div>
+                
+                <div className="p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 font-bold">HR</div>
+                            <div><h1 className="text-xl font-bold text-slate-800">RRHH CHS</h1><p className="text-xs text-slate-500">Informe de Consumo</p></div>
+                        </div>
+                        <div className="text-right"><p className="text-sm font-medium text-slate-700">Fecha</p><p className="text-slate-500 text-sm">{new Date(viewingRedemption.date).toLocaleDateString()}</p></div>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 mb-6">
+                        <p className="text-xs text-slate-500 uppercase font-bold mb-2">Solicitante</p>
+                        <p className="text-slate-800 font-medium">{users.find(u => u.id === viewingRedemption.userId)?.name}</p>
+                        <div className="mt-4 flex justify-between items-center">
+                            <div><p className="text-xs text-slate-500 uppercase font-bold">Tipo</p><p className="text-purple-600 font-bold">{getRedemptionLabel(viewingRedemption.redemptionType)}</p></div>
+                            <div className="text-right"><p className="text-xs text-slate-500 uppercase font-bold">Total</p><p className="text-xl font-bold text-slate-800">{Math.abs(viewingRedemption.hours)}h</p></div>
+                        </div>
+                    </div>
+
+                    <h4 className="font-bold text-slate-700 mb-2 border-b border-slate-100 pb-2">Trazabilidad</h4>
+                    <table className="w-full text-sm mb-6">
+                        <thead><tr className="text-slate-500 text-xs uppercase text-left"><th className="py-2">Fecha Origen</th><th className="py-2">Motivo</th><th className="py-2 text-right">Horas</th></tr></thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {viewingRedemption.linkedRecordIds?.map(id => {
+                                const original = overtime.find(o => o.id === id);
+                                if (!original) return null;
+                                return (
+                                    <tr key={id}><td className="py-2">{new Date(original.date).toLocaleDateString()}</td><td className="py-2 text-slate-600 truncate max-w-[150px]">{original.description}</td><td className="py-2 text-right font-medium text-emerald-600">+{original.hours}h</td></tr>
+                                )
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end space-x-2 no-print">
+                    <button onClick={handlePrint} className="flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 shadow-sm"><Printer size={16} className="mr-2" /> Imprimir</button>
+                    <button onClick={() => setViewingRedemption(null)} className="px-4 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700">Cerrar</button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

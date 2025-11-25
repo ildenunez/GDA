@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType } from '../types';
+import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 // Helper generators
@@ -25,6 +25,7 @@ interface DataContextType {
   users: User[];
   departments: Department[];
   absenceTypes: AbsenceType[];
+  shiftTypes: ShiftTypeDefinition[];
   requests: AbsenceRequest[];
   overtime: OvertimeRecord[];
   notifications: Notification[];
@@ -50,8 +51,10 @@ interface DataContextType {
   markAllNotificationsRead: () => void;
   
   // Shift Management
-  addShift: (userId: string, date: string, type: ShiftType) => void;
+  addShift: (userId: string, date: string, typeId: string) => void;
   deleteShift: (id: string) => void;
+  createShiftType: (type: Omit<ShiftTypeDefinition, 'id'>) => void;
+  deleteShiftType: (id: string) => void;
   
   // Admin Functions
   updateAbsenceType: (type: AbsenceType) => void;
@@ -123,6 +126,12 @@ const SEED_ABSENCE_TYPES: AbsenceType[] = [
   { id: 't4', name: 'Navidad (Cerrado)', isClosedRange: true, availableRanges: [{ start: '2023-12-24', end: '2023-12-31' }], color: 'bg-red-100 text-red-800', deductsDays: false }
 ];
 
+const SEED_SHIFT_TYPES: ShiftTypeDefinition[] = [
+    { id: 'MORNING', name: 'Mañana', color: 'bg-amber-100 text-amber-800 border-amber-300', startTime: '08:00', endTime: '15:00' },
+    { id: 'AFTERNOON', name: 'Tarde', color: 'bg-indigo-100 text-indigo-800 border-indigo-300', startTime: '15:00', endTime: '22:00' },
+    { id: 'NIGHT', name: 'Noche', color: 'bg-slate-800 text-slate-200 border-slate-600', startTime: '22:00', endTime: '06:00' }
+];
+
 const SEED_EMAIL_TEMPLATES: EmailTemplate[] = [
     { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente.', recipients: [Role.WORKER] },
     { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una nueva solicitud de ausencia.', recipients: [Role.SUPERVISOR, Role.ADMIN] },
@@ -139,6 +148,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
+  const [shiftTypes, setShiftTypes] = useState<ShiftTypeDefinition[]>([]);
   const [requests, setRequests] = useState<AbsenceRequest[]>([]);
   const [overtime, setOvertime] = useState<OvertimeRecord[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -174,6 +184,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: usersData } = await supabase.from('users').select('*');
         const { data: deptsData } = await supabase.from('departments').select('*');
         const { data: typesData } = await supabase.from('absence_types').select('*');
+        const { data: shiftTypesData } = await supabase.from('shift_types').select('*');
         const { data: reqsData } = await supabase.from('requests').select('*');
         const { data: otData } = await supabase.from('overtime').select('*');
         const { data: notifData } = await supabase.from('notifications').select('*');
@@ -189,6 +200,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (usersData) setUsers(usersData);
         if (deptsData) setDepartments(deptsData);
         if (typesData) setAbsenceTypes(typesData);
+        
+        // Handle shift types seeding if table is empty but users exist
+        if (!shiftTypesData || shiftTypesData.length === 0) {
+            await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
+            setShiftTypes(SEED_SHIFT_TYPES);
+        } else {
+            setShiftTypes(shiftTypesData);
+        }
+        
         if (reqsData) setRequests(reqsData);
         if (otData) setOvertime(otData);
         if (notifData) setNotifications(notifData);
@@ -220,6 +240,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await supabase.from('departments').insert(SEED_DEPARTMENTS);
           await supabase.from('users').insert(SEED_USERS);
           await supabase.from('absence_types').insert(SEED_ABSENCE_TYPES);
+          await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
           await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
           fetchData();
       } catch (e) {
@@ -233,6 +254,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supabase.channel('public:users').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
         supabase.channel('public:departments').on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => fetchData()).subscribe(),
         supabase.channel('public:absence_types').on('postgres_changes', { event: '*', schema: 'public', table: 'absence_types' }, () => fetchData()).subscribe(),
+        supabase.channel('public:shift_types').on('postgres_changes', { event: '*', schema: 'public', table: 'shift_types' }, () => fetchData()).subscribe(),
         supabase.channel('public:requests').on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => fetchData()).subscribe(),
         supabase.channel('public:overtime').on('postgres_changes', { event: '*', schema: 'public', table: 'overtime' }, () => fetchData()).subscribe(),
         supabase.channel('public:notifications').on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => fetchData()).subscribe(),
@@ -401,17 +423,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const originalRequests = [...requests];
       setRequests(prev => prev.filter(r => r.id !== id));
       try {
+           // FORCE RLS BYPASS IF NEEDED (Assuming Policy is correct now)
+           // But best practice is simply standard delete
           const { error } = await supabase.from('requests').delete().eq('id', id);
           if (error) throw error;
           notifyUI('Eliminado', 'Solicitud eliminada. Los días se han restaurado.', 'success');
           await fetchData();
       } catch (error: any) {
           setRequests(originalRequests);
-          if (error.code === '42501' || error.message?.includes('policy')) {
-             notifyUI('Error de Permisos', `Supabase bloqueó el borrado. Ejecuta el script SQL proporcionado.`, 'error');
-          } else {
-             notifyUI('Error', `No se pudo eliminar: ${error.message}`, 'error');
-          }
+          notifyUI('Error', `No se pudo eliminar: ${error.message || error.error_description}`, 'error');
       }
   };
 
@@ -472,6 +492,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteOvertime = async (id: string) => {
+      console.log(`[DELETE OVERTIME] Deleting ID: ${id}`);
       const rec = overtime.find(o => o.id === id);
       if (!rec) return;
       if (rec.hours > 0 && rec.consumed > 0) {
@@ -480,11 +501,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       const originalOvertime = [...overtime];
       setOvertime(prev => prev.filter(o => o.id !== id)); 
+      
       try {
           if (rec.hours < 0 && rec.status === RequestStatus.APPROVED && rec.linkedRecordIds && rec.linkedRecordIds.length > 0) {
+              // RESTORE LOGIC
               let remainingToRestore = Math.abs(rec.hours);
+              // Fetch fresh state to avoid stale data
               const { data: freshData } = await supabase.from('overtime').select('*');
               const currentDbState = freshData || overtime;
+              
               for (const linkedId of rec.linkedRecordIds) {
                   if (remainingToRestore <= 0) break;
                   const originalRec = currentDbState.find(o => o.id === linkedId);
@@ -492,6 +517,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                       const restoreAmount = Math.min(originalRec.consumed, remainingToRestore);
                       if (restoreAmount > 0) {
                           const newConsumed = originalRec.consumed - restoreAmount;
+                          // Force update regardless of policies (if RLS is disabled as instructed)
                           const { error: updateError } = await supabase.from('overtime').update({ consumed: newConsumed }).eq('id', linkedId);
                           if (updateError) throw updateError;
                           remainingToRestore -= restoreAmount;
@@ -505,11 +531,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await fetchData();
       } catch (error: any) {
           setOvertime(originalOvertime);
-          if (error.code === '42501' || error.message?.includes('policy')) {
-             notifyUI('Error Permisos', `Ejecuta el script SQL proporcionado.`, 'error');
-          } else {
-             notifyUI('Error', `No se pudo eliminar: ${error.message}`, 'error');
-          }
+          notifyUI('Error', `No se pudo eliminar: ${error.message}`, 'error');
       }
   };
 
@@ -602,13 +624,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   // --- SHIFT MANAGEMENT ---
-  const addShift = async (userId: string, date: string, type: ShiftType) => {
+  const addShift = async (userId: string, date: string, typeId: string) => {
       // Check if shift already exists
       const exists = shifts.find(s => s.userId === userId && s.date === date);
       if (exists) {
-          // If type is different, update it. If same, do nothing or user might want to toggle off.
-          // For this implementation, we'll allow updating via a delete-then-insert approach or simple update in future
-          // Here we just delete previous and insert new to be safe
           await deleteShift(exists.id); 
       }
       
@@ -616,7 +635,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           id: generateId(),
           userId,
           date,
-          shiftType: type,
+          shiftType: typeId,
           createdAt: new Date().toISOString()
       };
       setShifts(prev => [...prev, newShift]);
@@ -627,6 +646,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setShifts(prev => prev.filter(s => s.id !== id));
       await supabase.from('shifts').delete().eq('id', id);
   };
+
+  const createShiftType = async (type: Omit<ShiftTypeDefinition, 'id'>) => {
+    const newType = { ...type, id: generateId() };
+    setShiftTypes(prev => [...prev, newType]);
+    await supabase.from('shift_types').insert(newType);
+  };
+
+  const deleteShiftType = async (id: string) => {
+    setShiftTypes(prev => prev.filter(t => t.id !== id));
+    await supabase.from('shift_types').delete().eq('id', id);
+  };
   
   const importDatabase = (data: any) => {
       console.log("Database import is deprecated with Supabase integration.");
@@ -634,11 +664,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <DataContext.Provider value={{
-      currentUser, users, departments, absenceTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, isLoading,
+      currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, isLoading,
       login, logout, updateUser, adjustUserVacation, addUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
       addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase,
-      addShift, deleteShift
+      addShift, deleteShift, createShiftType, deleteShiftType
     }}>
       {children}
     </DataContext.Provider>

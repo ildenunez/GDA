@@ -24,6 +24,7 @@ export enum RedemptionType {
   PAYROLL = 'PAYROLL'          // Abono en nomina
 }
 
+// Deprecated enum, kept for reference but logic now uses dynamic strings
 export enum ShiftType {
   MORNING = 'MORNING',
   AFTERNOON = 'AFTERNOON'
@@ -66,6 +67,14 @@ export interface AbsenceType {
   deductsDays?: boolean; 
 }
 
+export interface ShiftTypeDefinition {
+  id: string;
+  name: string;
+  color: string; // Tailwind classes string e.g. "bg-blue-100 text-blue-800"
+  startTime: string;
+  endTime: string;
+}
+
 export interface AbsenceRequest {
   id: string;
   userId: string;
@@ -95,7 +104,7 @@ export interface Shift {
   id: string;
   userId: string;
   date: string; // YYYY-MM-DD
-  shiftType: ShiftType;
+  shiftType: string; // ID of the ShiftTypeDefinition
   createdAt: string;
 }
 

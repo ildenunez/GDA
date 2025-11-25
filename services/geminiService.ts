@@ -1,11 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Use standard process.env.API_KEY as per guidelines
+const apiKey = process.env.API_KEY;
+
+// Initialize conditionally to prevent crashes if key is missing during build
+let ai: GoogleGenAI | null = null;
+if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+}
 
 export const askHRAssistant = async (
   query: string,
   userContext: string
 ): Promise<string> => {
+  if (!ai) return "Error: API Key de Google no configurada.";
+
   try {
     const model = 'gemini-2.5-flash';
     const systemInstruction = `

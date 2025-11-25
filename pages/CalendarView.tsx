@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
-import { ChevronLeft, ChevronRight, Filter, Briefcase, Moon, Sun, Plus, X } from 'lucide-react';
-import { Role, RequestStatus, ShiftType } from '../types';
+import { ChevronLeft, ChevronRight, Filter, Briefcase, Plus, X, Clock } from 'lucide-react';
+import { Role, RequestStatus } from '../types';
 
 const CalendarView = () => {
-  const { currentUser, requests, users, departments, absenceTypes, shifts, addShift, deleteShift } = useData();
+  const { currentUser, requests, users, departments, absenceTypes, shifts, addShift, deleteShift, shiftTypes } = useData();
   
   // --- STATE ---
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -19,7 +19,7 @@ const CalendarView = () => {
       userId: '',
       startDate: '',
       endDate: '', // Range assignment
-      shiftType: ShiftType.MORNING
+      shiftTypeId: ''
   });
 
   // --- HELPERS ---
@@ -64,17 +64,17 @@ const CalendarView = () => {
 
   const handleAssignShifts = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!shiftForm.userId || !shiftForm.startDate || !shiftForm.endDate) return;
+      if (!shiftForm.userId || !shiftForm.startDate || !shiftForm.endDate || !shiftForm.shiftTypeId) return;
       
       const start = new Date(shiftForm.startDate);
       const end = new Date(shiftForm.endDate);
       
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           const dateStr = formatDate(d);
-          await addShift(shiftForm.userId, dateStr, shiftForm.shiftType);
+          await addShift(shiftForm.userId, dateStr, shiftForm.shiftTypeId);
       }
       setShowShiftModal(false);
-      setShiftForm({ userId: '', startDate: '', endDate: '', shiftType: ShiftType.MORNING });
+      setShiftForm({ userId: '', startDate: '', endDate: '', shiftTypeId: '' });
   };
 
   const handleDayClick = (dateStr: string) => {
@@ -94,7 +94,7 @@ const CalendarView = () => {
       const days = [];
       
       for (let i = 0; i < firstDay; i++) {
-          days.push(<div key={`empty-${i}`} className="bg-slate-50/50 h-32 border border-slate-100"></div>);
+          days.push(<div key={`empty-${i}`} className="bg-slate-50/50 min-h-[120px] border border-slate-100"></div>);
       }
 
       for (let d = 1; d <= daysInMonth; d++) {
@@ -118,29 +118,55 @@ const CalendarView = () => {
               (selectedDeptId === 'all' || users.find(u => u.id === s.userId)?.departmentId === selectedDeptId)
           );
 
+          // Determine View Mode: "Single View" (Big Card) or "Multi View" (List)
+          // Use Single View if it's a Worker OR if an Admin has filtered to a specific user
+          const isSingleView = isWorker || (selectedUserId !== 'all');
+
           days.push(
               <div 
                   key={d} 
                   onClick={() => handleDayClick(dateStr)}
-                  className={`bg-white h-32 border border-slate-100 p-1 overflow-hidden transition-colors relative group ${managementMode && !isWorker ? 'cursor-pointer hover:bg-blue-50/50' : ''} ${isToday ? 'bg-blue-50/30' : ''}`}
+                  className={`bg-white min-h-[120px] border border-slate-100 p-1 overflow-hidden transition-colors relative group ${managementMode && !isWorker ? 'cursor-pointer hover:bg-blue-50/50' : ''} ${isToday ? 'bg-blue-50/30' : ''}`}
               >
-                  <span className={`text-sm font-medium ml-1 ${isToday ? 'bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center inline-block' : 'text-slate-700'}`}>{d}</span>
+                  <span className={`text-sm font-medium ml-1 absolute top-1 left-1 z-10 ${isToday ? 'bg-primary text-white w-6 h-6 rounded-full flex items-center justify-center' : 'text-slate-400'}`}>{d}</span>
                   
                   {managementMode && !isWorker && (
-                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100">
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 z-20">
                           <Plus size={14} className="text-primary" />
                       </div>
                   )}
 
-                  <div className="mt-1 space-y-0.5 overflow-y-auto max-h-[calc(100%-24px)] custom-scrollbar">
+                  <div className="mt-6 w-full h-full">
                       {/* SHIFTS RENDER */}
                       {dayShifts.map(shift => {
                           const user = users.find(u => u.id === shift.userId);
+                          const shiftDef = shiftTypes.find(t => t.id === shift.shiftType);
                           
+                          if (isSingleView && shiftDef) {
+                              // BIG CARD STYLE (Admin Style)
+                              return (
+                                  <div key={shift.id} className={`absolute inset-1 mt-6 rounded-lg flex flex-col items-center justify-center shadow-sm animate-in zoom-in duration-200 ${shiftDef.color}`}>
+                                      <Clock size={24} className="mb-1 opacity-70" />
+                                      <span className="text-xs font-bold text-center leading-tight uppercase px-1">{shiftDef.name}</span>
+                                      <span className="text-[10px] opacity-75">{shiftDef.startTime}-{shiftDef.endTime}</span>
+                                      {managementMode && !isWorker && (
+                                         <button onClick={(e) => { e.stopPropagation(); deleteShift(shift.id); }} className="absolute top-1 right-1 text-red-500 hover:text-red-700 bg-white/50 rounded-full p-0.5"><X size={12} /></button>
+                                      )}
+                                  </div>
+                              );
+                          }
+
+                          // LIST STYLE (Multi-User View)
+                          let label = shiftDef ? shiftDef.name.substring(0,1) : '?';
+                          if (!shiftDef && shift.shiftType === 'MORNING') label = 'M';
+                          if (!shiftDef && shift.shiftType === 'AFTERNOON') label = 'T';
+
                           return (
-                              <div key={shift.id} className="flex items-center text-[10px] px-1 py-0.5 rounded border bg-white border-slate-200">
+                              <div key={shift.id} className="flex items-center text-[10px] px-1 py-0.5 rounded border bg-white border-slate-200 mb-1">
                                   <div className="w-1.5 h-full rounded-l absolute left-0 top-0 bottom-0" style={{ backgroundColor: user?.calendarColor || '#ccc' }}></div>
-                                  <span className="font-bold ml-1 mr-1">{shift.shiftType === ShiftType.MORNING ? 'M' : 'T'}</span>
+                                  <span className={`font-bold ml-1 mr-1 ${shiftDef ? '' : (shift.shiftType === 'MORNING' ? 'text-amber-600' : 'text-indigo-600')}`}>
+                                      {label}
+                                  </span>
                                   <span className="truncate flex-1">{user?.name.split(' ')[0]}</span>
                                   {managementMode && !isWorker && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteShift(shift.id); }} className="ml-1 text-slate-400 hover:text-red-500"><X size={10} /></button>
@@ -149,12 +175,24 @@ const CalendarView = () => {
                           )
                       })}
 
-                      {/* ABSENCES RENDER */}
+                      {/* ABSENCES RENDER (Overlay if Single View) */}
                       {dayRequests.map(req => {
                           const user = users.find(u => u.id === req.userId);
                           const type = absenceTypes.find(t => t.id === req.typeId);
+                          
+                          if (isSingleView) {
+                               // If there is a shift, show absence as a small pill on top, otherwise fill
+                               const hasShift = dayShifts.length > 0;
+                               return (
+                                   <div key={req.id} className={`absolute ${hasShift ? 'bottom-1 left-1 right-1' : 'inset-1 mt-6'} z-20 rounded border flex flex-col items-center justify-center text-center shadow-sm ${type?.color} ${hasShift ? 'h-auto py-0.5 text-[9px]' : ''}`}>
+                                       {!hasShift && <Briefcase size={20} className="mb-1 opacity-50" />}
+                                       <span className="font-bold text-[10px]">{type?.name}</span>
+                                   </div>
+                               );
+                          }
+
                           return (
-                              <div key={req.id} className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-600 truncate border border-slate-200 opacity-70">
+                              <div key={req.id} className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-600 truncate border border-slate-200 opacity-70 mb-1">
                                   {user?.name.split(' ')[0]} - {type?.name}
                               </div>
                           )
@@ -256,13 +294,17 @@ const CalendarView = () => {
                         </div>
                         <div>
                             <label className="block text-xs uppercase font-bold text-slate-500 mb-1">Turno</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button type="button" onClick={() => setShiftForm({...shiftForm, shiftType: ShiftType.MORNING})} className={`p-2 rounded border text-sm font-medium flex items-center justify-center ${shiftForm.shiftType === ShiftType.MORNING ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
-                                    <Sun size={16} className="mr-2" /> Mañana
-                                </button>
-                                <button type="button" onClick={() => setShiftForm({...shiftForm, shiftType: ShiftType.AFTERNOON})} className={`p-2 rounded border text-sm font-medium flex items-center justify-center ${shiftForm.shiftType === ShiftType.AFTERNOON ? 'bg-indigo-100 border-indigo-300 text-indigo-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
-                                    <Moon size={16} className="mr-2" /> Tarde
-                                </button>
+                            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                                {shiftTypes.map(type => (
+                                    <button 
+                                        type="button" 
+                                        key={type.id}
+                                        onClick={() => setShiftForm({...shiftForm, shiftTypeId: type.id})} 
+                                        className={`p-2 rounded border text-sm font-medium flex items-center justify-center transition-colors ${shiftForm.shiftTypeId === type.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <Clock size={14} className="mr-1" /> {type.name}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                         <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold hover:bg-slate-700">Guardar Turnos</button>

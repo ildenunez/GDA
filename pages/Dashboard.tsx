@@ -22,7 +22,7 @@ const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
 );
 
 const Dashboard = () => {
-  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts } = useData();
+  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts, shiftTypes } = useData();
   
   // Confirmation Modal State
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -70,6 +70,7 @@ const Dashboard = () => {
       .sort((a, b) => a.date.localeCompare(b.date));
   
   const nextShift = myUpcomingShifts[0];
+  const nextShiftDef = nextShift ? shiftTypes.find(t => t.id === nextShift.shiftType) : null;
 
   // Chart Data
   const requestsByType = absenceTypes.map(type => ({
@@ -147,9 +148,13 @@ const Dashboard = () => {
                                     </span>
                                     <div className="border-l border-slate-600 pl-4">
                                         <p className="font-medium text-lg capitalize">{new Date(nextShift.date).toLocaleString('es-ES', { month: 'long', weekday: 'long' })}</p>
-                                        <div className={`flex items-center text-sm font-bold mt-1 ${nextShift.shiftType === ShiftType.MORNING ? 'text-amber-400' : 'text-indigo-400'}`}>
-                                            {nextShift.shiftType === ShiftType.MORNING ? <Sun size={16} className="mr-1.5" /> : <Moon size={16} className="mr-1.5" />}
-                                            {nextShift.shiftType === ShiftType.MORNING ? 'MAÑANA' : 'TARDE'}
+                                        <div className={`flex items-center text-sm font-bold mt-1 text-indigo-400`}>
+                                            <Clock size={16} className="mr-1.5" />
+                                            {nextShiftDef ? (
+                                                <span>{nextShiftDef.name.toUpperCase()} ({nextShiftDef.startTime}-{nextShiftDef.endTime})</span>
+                                            ) : (
+                                                <span>{nextShift.shiftType === 'MORNING' ? 'MAÑANA' : nextShift.shiftType === 'AFTERNOON' ? 'TARDE' : 'TURNO'}</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -208,9 +213,9 @@ const Dashboard = () => {
         </div>
 
         {/* Chart */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center h-[400px]">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center">
           <h3 className="text-lg font-bold text-slate-800 mb-4 w-full text-left">Distribución de Ausencias</h3>
-          <div className="w-full h-full pb-8">
+          <div className="w-full h-[300px] pb-8">
             {requestsByType.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
