@@ -119,7 +119,6 @@ const CalendarView = () => {
           );
 
           // Determine View Mode: "Single View" (Big Card) or "Multi View" (List)
-          // Use Single View if it's a Worker OR if an Admin has filtered to a specific user
           const isSingleView = isWorker || (selectedUserId !== 'all');
 
           days.push(
@@ -149,6 +148,7 @@ const CalendarView = () => {
                                       <Clock size={24} className="mb-1 opacity-70" />
                                       <span className="text-xs font-bold text-center leading-tight uppercase px-1">{shiftDef.name}</span>
                                       <span className="text-[10px] opacity-75">{shiftDef.startTime}-{shiftDef.endTime}</span>
+                                      {shiftDef.startTime2 && <span className="text-[10px] opacity-75">{shiftDef.startTime2}-{shiftDef.endTime2}</span>}
                                       {managementMode && !isWorker && (
                                          <button onClick={(e) => { e.stopPropagation(); deleteShift(shift.id); }} className="absolute top-1 right-1 text-red-500 hover:text-red-700 bg-white/50 rounded-full p-0.5"><X size={12} /></button>
                                       )}

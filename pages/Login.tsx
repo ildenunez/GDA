@@ -2,8 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { Mail, Lock, ArrowRight, User, Shield, Briefcase, AlertCircle } from 'lucide-react';
-import { Role } from '../types';
+import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
 
 const LOGO_URL = "https://img.evbuc.com/https%3A%2F%2Fcdn.evbuc.com%2Fimages%2F677236879%2F73808960223%2F1%2Foriginal.20240118-071537?w=284&auto=format%2Ccompress&q=75&sharp=10&rect=0%2C0%2C284%2C284&s=138022d792466dd1773752da55468b5b";
 
@@ -40,14 +39,9 @@ const Login = () => {
     }, 800);
   };
 
-  const handleDemoLogin = (demoEmail: string) => {
-      login(demoEmail);
-      navigate('/');
-  };
-
   return (
     <div className="min-h-screen flex bg-white">
-      {/* Left Side - Visual & Branding */}
+      {/* Left Side - Visual & Branding (Visible only on Desktop) */}
       <div className="hidden lg:flex lg:w-1/2 relative bg-slate-900 overflow-hidden flex-col justify-between p-12">
           {/* Animated Background Elements */}
           <div className="absolute top-0 left-0 w-full h-full z-0">
@@ -75,6 +69,12 @@ const Login = () => {
       {/* Right Side - Login Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-slate-50">
           <div className="w-full max-w-md space-y-8 bg-white p-10 rounded-3xl shadow-xl border border-slate-100">
+              
+              {/* Mobile Logo (Hidden on Desktop) */}
+              <div className="lg:hidden flex justify-center mb-6">
+                  <img src={LOGO_URL} alt="Company Logo" className="w-24 h-24 object-contain" />
+              </div>
+
               <div className="text-center lg:text-left">
                   <h2 className="text-3xl font-bold text-slate-800">Bienvenido</h2>
                   <p className="text-slate-500 mt-2">Introduce tus credenciales para acceder.</p>
@@ -128,48 +128,7 @@ const Login = () => {
                   </button>
               </form>
 
-              <div className="relative my-8">
-                  <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-slate-200"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                      <span className="px-4 bg-white text-slate-400 font-medium">O accede con Demo</span>
-                  </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                  <button 
-                    onClick={() => handleDemoLogin('juan@nexus.com')}
-                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all group"
-                  >
-                      <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                          <User size={20} />
-                      </div>
-                      <span className="text-xs font-bold text-slate-700">Trabajador</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleDemoLogin('laura@nexus.com')}
-                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 transition-all group"
-                  >
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                          <Briefcase size={20} />
-                      </div>
-                      <span className="text-xs font-bold text-slate-700">Supervisor</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleDemoLogin('admin@nexus.com')}
-                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition-all group"
-                  >
-                      <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                          <Shield size={20} />
-                      </div>
-                      <span className="text-xs font-bold text-slate-700">Admin</span>
-                  </button>
-              </div>
-
-              <div className="text-center pt-4">
+              <div className="text-center pt-8">
                   <p className="text-xs text-slate-400">© 2024 RRHH CHS. Todos los derechos reservados.</p>
               </div>
           </div>

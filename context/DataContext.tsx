@@ -39,6 +39,7 @@ interface DataContextType {
   updateUser: (id: string, data: Partial<User>) => void;
   adjustUserVacation: (userId: string, days: number, reason: string) => void;
   addUser: (user: Omit<User, 'id' | 'vacationAdjustment'>, initialVacation?: number, initialOvertime?: number) => void;
+  deleteUser: (id: string) => void;
   addRequest: (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>) => void;
   updateRequestStatus: (id: string, status: RequestStatus, reviewerId: string) => void;
   deleteRequest: (id: string) => void; 
@@ -54,6 +55,7 @@ interface DataContextType {
   addShift: (userId: string, date: string, typeId: string) => void;
   deleteShift: (id: string) => void;
   createShiftType: (type: Omit<ShiftTypeDefinition, 'id'>) => void;
+  updateShiftType: (type: ShiftTypeDefinition) => void;
   deleteShiftType: (id: string) => void;
   
   // Admin Functions
@@ -201,7 +203,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (deptsData) setDepartments(deptsData);
         if (typesData) setAbsenceTypes(typesData);
         
-        // Handle shift types seeding if table is empty but users exist
         if (!shiftTypesData || shiftTypesData.length === 0) {
             await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
             setShiftTypes(SEED_SHIFT_TYPES);
@@ -384,6 +385,36 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await supabase.from('overtime').insert(overtimeRec);
     }
   };
+  
+  const deleteUser = async (id: string) => {
+      console.log(`[DELETE USER] Deleting ID: ${id}`);
+      const originalUsers = [...users];
+      setUsers(prev => prev.filter(u => u.id !== id));
+      
+      try {
+          // Cleanup related data
+          // NOTE: We assume 'DELETE' policy is enabled in Supabase as instructed previously
+          await supabase.from('requests').delete().eq('userId', id);
+          await supabase.from('overtime').delete().eq('userId', id);
+          await supabase.from('notifications').delete().eq('userId', id);
+          await supabase.from('shifts').delete().eq('userId', id);
+          
+          // Cleanup Department supervisors
+          const relatedDepts = departments.filter(d => d.supervisorIds.includes(id));
+          for (const dept of relatedDepts) {
+              const newSupIds = dept.supervisorIds.filter(supId => supId !== id);
+              await updateDepartment({ ...dept, supervisorIds: newSupIds });
+          }
+
+          const { error } = await supabase.from('users').delete().eq('id', id);
+          if (error) throw error;
+          
+          notifyUI('Usuario Eliminado', 'El usuario y sus datos relacionados han sido eliminados.', 'success');
+      } catch (error: any) {
+          setUsers(originalUsers);
+          notifyUI('Error', `No se pudo eliminar el usuario: ${error.message}`, 'error');
+      }
+  };
 
   const addRequest = async (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>) => {
     const newReq = { ...req, id: generateId(), status: RequestStatus.PENDING, createdAt: new Date().toISOString() };
@@ -423,8 +454,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const originalRequests = [...requests];
       setRequests(prev => prev.filter(r => r.id !== id));
       try {
-           // FORCE RLS BYPASS IF NEEDED (Assuming Policy is correct now)
-           // But best practice is simply standard delete
           const { error } = await supabase.from('requests').delete().eq('id', id);
           if (error) throw error;
           notifyUI('Eliminado', 'Solicitud eliminada. Los días se han restaurado.', 'success');
@@ -517,7 +546,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                       const restoreAmount = Math.min(originalRec.consumed, remainingToRestore);
                       if (restoreAmount > 0) {
                           const newConsumed = originalRec.consumed - restoreAmount;
-                          // Force update regardless of policies (if RLS is disabled as instructed)
                           const { error: updateError } = await supabase.from('overtime').update({ consumed: newConsumed }).eq('id', linkedId);
                           if (updateError) throw updateError;
                           remainingToRestore -= restoreAmount;
@@ -652,6 +680,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setShiftTypes(prev => [...prev, newType]);
     await supabase.from('shift_types').insert(newType);
   };
+  
+  const updateShiftType = async (type: ShiftTypeDefinition) => {
+      setShiftTypes(prev => prev.map(t => t.id === type.id ? type : t));
+      await supabase.from('shift_types').update(type).eq('id', type.id);
+      notifyUI('Turno Actualizado', 'El tipo de turno ha sido modificado.', 'success');
+  };
 
   const deleteShiftType = async (id: string) => {
     setShiftTypes(prev => prev.filter(t => t.id !== id));
@@ -665,10 +699,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <DataContext.Provider value={{
       currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, isLoading,
-      login, logout, updateUser, adjustUserVacation, addUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
+      login, logout, updateUser, adjustUserVacation, addUser, deleteUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
       addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase,
-      addShift, deleteShift, createShiftType, deleteShiftType
+      addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType
     }}>
       {children}
     </DataContext.Provider>

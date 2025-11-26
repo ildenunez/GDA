@@ -73,6 +73,8 @@ export interface ShiftTypeDefinition {
   color: string; // Tailwind classes string e.g. "bg-blue-100 text-blue-800"
   startTime: string;
   endTime: string;
+  startTime2?: string; // Optional split shift start
+  endTime2?: string;   // Optional split shift end
 }
 
 export interface AbsenceRequest {

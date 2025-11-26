@@ -49,22 +49,25 @@ const Dashboard = () => {
   const usedVacationDays = myRequests
     .filter(r => r.status === RequestStatus.APPROVED && vacationTypeIds.includes(r.typeId))
     .reduce((acc, req) => {
-        // Robust Date Calculation
+        // Robust Date Calculation using local time
         const start = new Date(req.startDate);
-        start.setHours(12, 0, 0, 0);
-        
         const end = new Date(req.endDate);
-        end.setHours(12, 0, 0, 0);
         
-        const diffTime = Math.abs(end.getTime() - start.getTime());
+        // Ensure time is set to noon to avoid timezone shift issues across days
+        const s = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12, 0, 0);
+        const e = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 12, 0, 0);
+        
+        const diffTime = Math.abs(e.getTime() - s.getTime());
         const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
         return acc + days;
     }, 0);
 
   const remainingVacationDays = totalVacationDays - usedVacationDays;
 
-  // UPCOMING SHIFT LOGIC
-  const todayStr = new Date().toISOString().split('T')[0];
+  // UPCOMING SHIFT LOGIC (Fixed for local timezone)
+  const now = new Date();
+  const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toLocaleDateString('en-CA'); // YYYY-MM-DD local
+  
   const myUpcomingShifts = shifts
       .filter(s => s.userId === currentUser?.id && s.date >= todayStr)
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -144,14 +147,17 @@ const Dashboard = () => {
                                 <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Próximo Turno</p>
                                 <div className="flex items-center space-x-4">
                                     <span className="text-3xl font-bold">
-                                        {new Date(nextShift.date).getDate()}
+                                        {new Date(nextShift.date + 'T12:00:00').getDate()}
                                     </span>
                                     <div className="border-l border-slate-600 pl-4">
-                                        <p className="font-medium text-lg capitalize">{new Date(nextShift.date).toLocaleString('es-ES', { month: 'long', weekday: 'long' })}</p>
+                                        <p className="font-medium text-lg capitalize">{new Date(nextShift.date + 'T12:00:00').toLocaleString('es-ES', { month: 'long', weekday: 'long' })}</p>
                                         <div className={`flex items-center text-sm font-bold mt-1 text-indigo-400`}>
                                             <Clock size={16} className="mr-1.5" />
                                             {nextShiftDef ? (
-                                                <span>{nextShiftDef.name.toUpperCase()} ({nextShiftDef.startTime}-{nextShiftDef.endTime})</span>
+                                                <span>
+                                                    {nextShiftDef.name.toUpperCase()} ({nextShiftDef.startTime}-{nextShiftDef.endTime}
+                                                    {nextShiftDef.startTime2 ? ` / ${nextShiftDef.startTime2}-${nextShiftDef.endTime2}` : ''})
+                                                </span>
                                             ) : (
                                                 <span>{nextShift.shiftType === 'MORNING' ? 'MAÑANA' : nextShift.shiftType === 'AFTERNOON' ? 'TARDE' : 'TURNO'}</span>
                                             )}
@@ -215,7 +221,7 @@ const Dashboard = () => {
         {/* Chart */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center">
           <h3 className="text-lg font-bold text-slate-800 mb-4 w-full text-left">Distribución de Ausencias</h3>
-          <div className="w-full h-[300px] pb-8">
+          <div className="w-full h-[300px] pb-8" style={{ height: 300 }}>
             {requestsByType.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

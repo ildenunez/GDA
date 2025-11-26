@@ -4,8 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RRHH CHS</title>
-    
-    <!-- Tailwind CSS (CDN for simplicity in this migration) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -31,7 +29,7 @@
     <script type="text/javascript">
       (function(){
           emailjs.init({
-            publicKey: "TU_PUBLIC_KEY_AQUI", // Optional init, handled in code
+            publicKey: "TU_PUBLIC_KEY_AQUI", 
           });
       })();
     </script>
@@ -39,33 +37,54 @@
     <style>
       body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; }
       
-      /* Custom Scrollbar */
       ::-webkit-scrollbar { width: 8px; }
       ::-webkit-scrollbar-track { background: #f1f1f1; }
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-      /* Print Styles */
+      /* PRINT STYLES - FROM SCRATCH */
       @media print {
-        body { visibility: hidden; background: white; }
-        body * { visibility: hidden; }
-        .print-area, .print-area * {
-          visibility: visible !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
+        /* 1. Hide the entire React App Wrapper */
+        #root {
+          display: none !important;
         }
-        .print-area {
-          position: fixed !important;
+
+        /* 2. Reset Body */
+        body {
+          background: white !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
+        }
+
+        /* 3. Style the specific Printable Section */
+        #printable-section {
+          display: block !important;
+          position: absolute !important;
           left: 0 !important;
           top: 0 !important;
-          width: 100vw !important;
-          height: auto !important;
+          width: 100% !important;
           margin: 0 !important;
           padding: 20px !important;
           background: white !important;
-          z-index: 999999 !important;
+          z-index: 9999 !important;
         }
-        .no-print { display: none !important; }
+
+        /* 4. Ensure contents are visible */
+        #printable-section * {
+          visibility: visible !important;
+          display: block !important; /* Reset flex/grid if needed, or keep as is */
+        }
+        
+        /* Restore Flexbox for internal layout if strictly needed */
+        #printable-section .flex { display: flex !important; }
+        #printable-section .grid { display: grid !important; }
+        #printable-section .hidden { display: none !important; }
+
+        /* Hide buttons inside the modal during print */
+        .no-print {
+          display: none !important;
+        }
       }
     </style>
   <script type="importmap">
