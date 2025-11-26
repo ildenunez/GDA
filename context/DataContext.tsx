@@ -137,14 +137,14 @@ const SEED_SHIFT_TYPES: ShiftTypeDefinition[] = [
 ];
 
 const SEED_EMAIL_TEMPLATES: EmailTemplate[] = [
-    { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente.', recipients: [Role.WORKER] },
+    { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una nueva solicitud de ausencia.', recipients: [Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et3', eventType: 'REQUEST_APPROVED', name: 'Ausencia Aprobada', subject: 'Solicitud Aprobada', body: 'Hola {{name}}, tu solicitud ha sido APROBADA.', recipients: [Role.WORKER] },
-    { id: 'et4', eventType: 'REQUEST_REJECTED', name: 'Ausencia Rechazada', subject: 'Solicitud Rechazada', body: 'Hola {{name}}, tu solicitud ha sido RECHAZADA.', recipients: [Role.WORKER] },
+    { id: 'et3', eventType: 'REQUEST_APPROVED', name: 'Ausencia Aprobada', subject: 'Solicitud Aprobada', body: 'Hola {{name}}, tu solicitud ha sido APROBADA.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et4', eventType: 'REQUEST_REJECTED', name: 'Ausencia Rechazada', subject: 'Solicitud Rechazada', body: 'Hola {{name}}, tu solicitud ha sido RECHAZADA.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et5', eventType: 'OVERTIME_CREATED', name: 'Registro Horas (Aviso)', subject: 'Registro Horas: {{name}}', body: '{{name}} ha registrado {{hours}} horas extras. Motivo: {{description}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et6', eventType: 'REDEMPTION_CREATED', name: 'Consumo Horas (Aviso)', subject: 'Solicitud Canje: {{name}}', body: '{{name}} solicita canjear {{hours}} horas. Tipo: {{type}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et7', eventType: 'OVERTIME_APPROVED', name: 'Horas/Canje Aprobado', subject: 'Registro Aprobado', body: 'Tu registro de {{hours}}h ha sido APROBADO.', recipients: [Role.WORKER] },
-    { id: 'et8', eventType: 'OVERTIME_REJECTED', name: 'Horas/Canje Rechazado', subject: 'Registro Rechazado', body: 'Tu registro de {{hours}}h ha sido RECHAZADO.', recipients: [Role.WORKER] },
+    { id: 'et7', eventType: 'OVERTIME_APPROVED', name: 'Horas/Canje Aprobado', subject: 'Registro Aprobado', body: 'Tu registro de {{hours}}h ha sido APROBADO.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et8', eventType: 'OVERTIME_REJECTED', name: 'Horas/Canje Rechazado', subject: 'Registro Rechazado', body: 'Tu registro de {{hours}}h ha sido RECHAZADO.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
 ];
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -224,13 +224,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
              setEmailTemplates(SEED_EMAIL_TEMPLATES);
         } else {
-             const existingTypes = templData.map(t => t.eventType);
-             const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
-             if (missingTemplates.length > 0) {
-                 await supabase.from('email_templates').insert(missingTemplates);
-                 setEmailTemplates([...templData, ...missingTemplates]);
+             // AUTO-PATCH: Check for templates with missing recipients (common migration issue)
+             const templatesToPatch = templData.filter(t => !t.recipients || t.recipients.length === 0);
+             if (templatesToPatch.length > 0) {
+                 console.log("[AUTO-PATCH] Fixing email templates with missing recipients...");
+                 const updates = templatesToPatch.map(t => {
+                     const seed = SEED_EMAIL_TEMPLATES.find(s => s.eventType === t.eventType);
+                     if (seed) {
+                         return { ...t, recipients: seed.recipients };
+                     }
+                     return t;
+                 });
+                 
+                 for (const u of updates) {
+                     await supabase.from('email_templates').update({ recipients: u.recipients }).eq('id', u.id);
+                 }
+                 
+                 // Merge updates into state
+                 const updatedTemplates = templData.map(t => {
+                     const patched = updates.find(u => u.id === t.id);
+                     return patched || t;
+                 });
+                 setEmailTemplates(updatedTemplates);
              } else {
-                 setEmailTemplates(templData);
+                 const existingTypes = templData.map(t => t.eventType);
+                 const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
+                 if (missingTemplates.length > 0) {
+                     await supabase.from('email_templates').insert(missingTemplates);
+                     setEmailTemplates([...templData, ...missingTemplates]);
+                 } else {
+                     setEmailTemplates(templData);
+                 }
              }
         }
 
@@ -287,8 +311,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const sendEmailWithTemplate = async (eventType: string, toUser: User, variables: Record<string, string>) => {
+      console.log(`[EMAIL] Attempting to send ${eventType} to ${toUser.email} (${toUser.role})`);
       const template = emailTemplates.find(t => t.eventType === eventType);
-      if (!template || !template.recipients.includes(toUser.role)) return;
+      
+      if (!template) {
+          console.warn(`[EMAIL] Template ${eventType} not found.`);
+          return;
+      }
+      
+      if (!template.recipients || !template.recipients.includes(toUser.role)) {
+          console.warn(`[EMAIL] User role ${toUser.role} is not in recipient list for ${eventType}:`, template.recipients);
+          return;
+      }
 
       const subject = parseTemplate(template.subject, variables);
       const body = parseTemplate(template.body, variables);
@@ -296,6 +330,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // PRIORITY 1: SMTP via Vercel API
       if (smtpConfig.host && smtpConfig.user && smtpConfig.pass) {
           try {
+              console.log("[EMAIL] Sending via SMTP...");
               const response = await fetch('/api/send-email', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -310,6 +345,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const result = await response.json();
               if (response.ok) {
                   if (eventType === 'WELCOME') notifyUI('Email Enviado', `Bienvenida enviada a ${toUser.email} (SMTP)`, 'success');
+                  console.log("[EMAIL] SMTP Success");
                   return; // Successfully sent via SMTP
               } else {
                   console.warn("SMTP send failed, falling back if available:", result.error);
@@ -322,6 +358,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // PRIORITY 2: EmailJS Fallback
       if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
           try {
+             console.log("[EMAIL] Sending via EmailJS...");
              // @ts-ignore
              if (window.emailjs) {
                  // @ts-ignore
@@ -332,9 +369,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                      { publicKey: emailConfig.publicKey }
                  );
                  if (eventType === 'WELCOME') notifyUI('Email Enviado', `Bienvenida enviada a ${toUser.email}`, 'success');
+                 console.log("[EMAIL] EmailJS Success");
              }
           } catch (error: any) {
               notifyUI('Error Email', `No se pudo enviar el correo: ${error.text || 'Error desconocido'}`, 'error');
+              console.error("[EMAIL] EmailJS Error:", error);
           }
       }
   };
