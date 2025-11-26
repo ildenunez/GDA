@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock, FileText, LayoutList, Megaphone } from 'lucide-react';
+import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock, FileText, LayoutList, Megaphone, Send } from 'lucide-react';
 import { Role, RequestStatus, AbsenceType, Department, User, OvertimeRecord, RedemptionType, EmailTemplate, ShiftType, ShiftTypeDefinition } from '../types';
 
 const AdminPanel = () => {
@@ -9,7 +9,7 @@ const AdminPanel = () => {
       absenceTypes, createAbsenceType, deleteAbsenceType, updateAbsenceType,
       departments, addDepartment, updateDepartment, deleteDepartment,
       users, updateUser, adjustUserVacation, addUser, deleteUser, requests, deleteRequest, overtime, addOvertime, deleteOvertime,
-      notifications, importDatabase, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig, systemMessage, updateSystemMessage,
+      notifications, importDatabase, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig, sendTestEmail, systemMessage, updateSystemMessage,
       shifts, addShift, deleteShift, shiftTypes, createShiftType, updateShiftType, deleteShiftType
   } = useData();
   
@@ -19,7 +19,7 @@ const AdminPanel = () => {
   const [newType, setNewType] = useState({ name: '', isClosedRange: false, color: 'bg-gray-100 text-gray-800', rangeStart: '', rangeEnd: '', deductsDays: false });
   const [newDept, setNewDept] = useState({ name: '', supervisorIds: [] as string[] });
   
-  // New Shift Type Form (Updated for Split Shift)
+  // New Shift Type Form
   const [newShiftType, setNewShiftType] = useState({ 
       name: '', color: 'bg-blue-100 text-blue-800 border-blue-300', 
       startTime: '08:00', endTime: '15:00',
@@ -35,6 +35,7 @@ const AdminPanel = () => {
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [emailConfigForm, setEmailConfigForm] = useState(emailConfig);
   const [smtpConfigForm, setSmtpConfigForm] = useState(smtpConfig);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
   
   // System Message State
   const [sysMsgForm, setSysMsgForm] = useState({
@@ -54,10 +55,7 @@ const AdminPanel = () => {
   const [activeUserTab, setActiveUserTab] = useState<'info' | 'absences' | 'overtime' | 'adjustments'>('info');
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   
-  // Detail View State (Redemption)
-  const [viewingRedemption, setViewingRedemption] = useState<OvertimeRecord | null>(null);
-  
-  // New User Form - Expanded
+  // New User Form
   const [newUserForm, setNewUserForm] = useState({ 
       name: '', email: '', role: Role.WORKER, departmentId: '', 
       initialVacation: 0, initialOvertime: 0, calendarColor: '#3b82f6'
@@ -165,14 +163,6 @@ const AdminPanel = () => {
                 : [...prev.supervisorIds, userId]
           };
       });
-  };
-
-  const toggleDepartmentSupervisor = (deptId: string, userId: string) => {
-      const dept = departments.find(d => d.id === deptId);
-      if(!dept) return;
-      const isSupervisor = dept.supervisorIds.includes(userId);
-      const newIds = isSupervisor ? dept.supervisorIds.filter(id => id !== userId) : [...dept.supervisorIds, userId];
-      updateDepartment({ ...dept, supervisorIds: newIds });
   };
   
   const handleUpdateTemplate = (e: React.FormEvent) => {
@@ -336,44 +326,6 @@ const AdminPanel = () => {
       }
   };
 
-  const handleDeleteRequestClick = (id: string) => {
-      setConfirmModal({
-          show: true,
-          title: 'Eliminar Solicitud',
-          message: '¿Seguro que quieres eliminar esta solicitud? Los días se restaurarán.',
-          onConfirm: () => {
-              deleteRequest(id);
-              setConfirmModal(null);
-          }
-      });
-  }
-
-  const handleDeleteOvertimeClick = (id: string) => {
-      setConfirmModal({
-          show: true,
-          title: 'Eliminar Registro',
-          message: '¿Seguro que quieres eliminar este registro de horas?',
-          onConfirm: () => {
-              deleteOvertime(id);
-              setConfirmModal(null);
-          }
-      });
-  }
-
-  const handlePrint = () => {
-    // Small delay to ensure render is complete
-    setTimeout(() => window.print(), 100);
-  };
-
-  const getRedemptionLabel = (type?: RedemptionType) => {
-    switch(type) {
-        case RedemptionType.PAYROLL: return 'Abono en Nómina';
-        case RedemptionType.DAYS_EXCHANGE: return 'Canje por Días';
-        case RedemptionType.TIME_OFF: return 'Horas Libres';
-        default: return 'Canje';
-    }
-  };
-
   const filteredUsers = users.filter(u => u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.includes(searchTerm.toLowerCase()));
 
   // --- SHIFT MANAGEMENT LOGIC ---
@@ -465,7 +417,7 @@ const AdminPanel = () => {
 
   return (
     <div className="space-y-6">
-       {/* ... Header & Tabs ... */}
+       {/* Header & Tabs */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                 <h2 className="text-2xl font-bold text-slate-800">Administración</h2>
@@ -479,7 +431,7 @@ const AdminPanel = () => {
             </div>
        </div>
 
-       {/* ... Config & Comms Tabs ... */}
+       {/* Config Tab */}
        {activeTab === 'config' && (
            <div className="space-y-8">
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -521,765 +473,687 @@ const AdminPanel = () => {
                                       </div>
                                   </div>
                                   <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button onClick={() => setEditingType(type)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded"><Edit2 size={14} /></button>
-                                      <button onClick={() => deleteAbsenceType(type.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                                      <button onClick={() => setEditingType(type)} className="p-2 text-slate-400 hover:text-primary"><Edit2 size={16} /></button>
+                                      <button onClick={() => deleteAbsenceType(type.id)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
                                   </div>
                               </div>
                           ))}
                       </div>
-                      <div className="border-t border-slate-100 pt-4">
-                          <h4 className="text-sm font-semibold text-slate-600 mb-3">Crear Nuevo Tipo</h4>
-                          <form onSubmit={handleCreateType} className="space-y-3">
-                              <input 
-                                type="text" 
-                                placeholder="Nombre (ej. Día de Asuntos Propios)" 
-                                className="w-full rounded-lg border-slate-300 border p-2 text-sm"
-                                value={newType.name}
-                                onChange={e => setNewType({...newType, name: e.target.value})}
-                                required
-                              />
-                              <div className="flex items-center space-x-2">
-                                  <input type="checkbox" id="closedRange" checked={newType.isClosedRange} onChange={e => setNewType({...newType, isClosedRange: e.target.checked})} />
-                                  <label htmlFor="closedRange" className="text-sm text-slate-600">Rango cerrado</label>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                  <input type="checkbox" id="deductsDays" checked={newType.deductsDays} onChange={e => setNewType({...newType, deductsDays: e.target.checked})} />
-                                  <label htmlFor="deductsDays" className="text-sm text-slate-600 font-medium text-red-500">¿Descuenta de vacaciones?</label>
-                              </div>
-                              {newType.isClosedRange && (
-                                  <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-lg">
-                                      <input type="date" className="text-xs border rounded p-1" required onChange={e => setNewType({...newType, rangeStart: e.target.value})} />
-                                      <input type="date" className="text-xs border rounded p-1" required onChange={e => setNewType({...newType, rangeEnd: e.target.value})} />
-                                  </div>
-                              )}
-                              <select className="w-full rounded-lg border-slate-300 border p-2 text-sm" value={newType.color} onChange={e => setNewType({...newType, color: e.target.value})}>
-                                  <option value="bg-blue-100 text-blue-800">Azul</option>
-                                  <option value="bg-green-100 text-green-800">Verde</option>
-                                  <option value="bg-purple-100 text-purple-800">Morado</option>
-                                  <option value="bg-pink-100 text-pink-800">Rosa</option>
-                                  <option value="bg-orange-100 text-orange-800">Naranja</option>
-                              </select>
-                              <button className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm hover:bg-slate-700 flex items-center justify-center">
-                                  <Plus size={16} className="mr-2" /> Crear Tipo
-                              </button>
-                          </form>
-                      </div>
+                      
+                      <form onSubmit={handleCreateType} className="space-y-4 border-t border-slate-100 pt-4">
+                          <h4 className="text-sm font-semibold text-slate-700">Crear Nuevo Tipo</h4>
+                          <input required type="text" placeholder="Nombre (ej. Vacaciones)" className="w-full border rounded p-2 text-sm" value={newType.name} onChange={e => setNewType({...newType, name: e.target.value})} />
+                          <div className="flex gap-4">
+                                <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={newType.isClosedRange} onChange={e => setNewType({...newType, isClosedRange: e.target.checked})} /> Rango Cerrado</label>
+                                <label className="flex items-center text-sm text-slate-600"><input type="checkbox" className="mr-2" checked={newType.deductsDays} onChange={e => setNewType({...newType, deductsDays: e.target.checked})} /> Descuenta Días</label>
+                          </div>
+                          {newType.isClosedRange && (
+                             <div className="flex gap-2">
+                                 <input type="date" required className="w-1/2 border rounded p-2 text-sm" value={newType.rangeStart} onChange={e => setNewType({...newType, rangeStart: e.target.value})} />
+                                 <input type="date" required className="w-1/2 border rounded p-2 text-sm" value={newType.rangeEnd} onChange={e => setNewType({...newType, rangeEnd: e.target.value})} />
+                             </div>
+                          )}
+                          <select className="w-full border rounded p-2 text-sm" value={newType.color} onChange={e => setNewType({...newType, color: e.target.value})}>
+                               <option value="bg-gray-100 text-gray-800">Gris</option>
+                               <option value="bg-blue-100 text-blue-800">Azul</option>
+                               <option value="bg-green-100 text-green-800">Verde</option>
+                               <option value="bg-yellow-100 text-yellow-800">Amarillo</option>
+                               <option value="bg-red-100 text-red-800">Rojo</option>
+                               <option value="bg-purple-100 text-purple-800">Morado</option>
+                               <option value="bg-pink-100 text-pink-800">Rosa</option>
+                          </select>
+                          <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm hover:bg-slate-700">Añadir Tipo</button>
+                      </form>
                   </div>
 
                   {/* DEPARTMENTS COMPONENT */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                       <h3 className="font-bold text-slate-800 mb-4 flex items-center">
                           <Briefcase className="mr-2 text-secondary" size={20} /> Departamentos
                       </h3>
-                      <div className="flex-1 space-y-4 mb-6 max-h-64 overflow-y-auto pr-2">
-                          {departments.map(dept => {
-                              return (
-                                  <div key={dept.id} className="p-3 border border-slate-100 rounded-lg group hover:bg-slate-50">
-                                      <div className="flex justify-between items-center mb-1">
-                                          <p className="text-sm font-bold text-slate-700">{dept.name}</p>
-                                          <div className="flex items-center space-x-2">
-                                              <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{dept.supervisorIds.length} Sup.</span>
-                                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex">
-                                                  <button onClick={() => setEditingDept(dept)} className="p-1 text-blue-500"><Edit2 size={14}/></button>
-                                                  <button onClick={() => deleteDepartment(dept.id)} className="p-1 text-red-500"><Trash2 size={14}/></button>
-                                              </div>
-                                          </div>
-                                      </div>
+                      <div className="space-y-4 mb-6 max-h-60 overflow-y-auto pr-2">
+                          {departments.map(dept => (
+                              <div key={dept.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg group">
+                                  <div>
+                                      <p className="text-sm font-medium text-slate-700">{dept.name}</p>
+                                      <p className="text-xs text-slate-400">{dept.supervisorIds.length} Supervisores</p>
                                   </div>
-                              );
-                          })}
+                                  <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => setEditingDept(dept)} className="p-2 text-slate-400 hover:text-primary"><Edit2 size={16} /></button>
+                                      <button onClick={() => deleteDepartment(dept.id)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+                                  </div>
+                              </div>
+                          ))}
                       </div>
-                      <div className="border-t border-slate-100 pt-4 mt-auto">
-                           <h4 className="text-sm font-semibold text-slate-600 mb-3">Nuevo Departamento</h4>
-                           <form onSubmit={handleCreateDept} className="space-y-3">
-                                <input type="text" placeholder="Nombre" className="w-full rounded-lg border-slate-300 border p-2 text-sm" value={newDept.name} onChange={e => setNewDept({...newDept, name: e.target.value})} required />
-                                <div className="border rounded-lg p-2 max-h-32 overflow-y-auto">
-                                    <p className="text-xs font-semibold text-slate-500 mb-2">Seleccionar Supervisores:</p>
-                                    {users.filter(u => u.role === Role.SUPERVISOR || u.role === Role.ADMIN).map(u => (
-                                        <label key={u.id} className="flex items-center space-x-2 text-sm py-1 hover:bg-slate-50 cursor-pointer">
-                                            <input type="checkbox" checked={newDept.supervisorIds.includes(u.id)} onChange={() => toggleSupervisorForNew(u.id)} className="rounded text-secondary focus:ring-secondary" />
-                                            <span>{u.name}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                                <button className="w-full bg-secondary text-white py-2 rounded-lg text-sm hover:bg-emerald-600 flex items-center justify-center">
-                                    <Plus size={16} className="mr-2" /> Añadir Dept.
-                                </button>
-                           </form>
-                      </div>
-                  </div>
-                  
-                  {/* SHIFT TYPES CONFIG */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
-                      <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-                          <Clock className="mr-2 text-indigo-600" size={20} /> Tipos de Turno
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                           <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
-                               {shiftTypes.map(type => (
-                                   <div key={type.id} className={`flex items-center justify-between p-3 border rounded-lg ${type.color}`}>
-                                       <div>
-                                           <p className="font-bold text-sm">{type.name}</p>
-                                           <p className="text-xs opacity-75">
-                                               {type.startTime} - {type.endTime}
-                                               {type.startTime2 && ` / ${type.startTime2} - ${type.endTime2}`}
-                                           </p>
-                                       </div>
-                                       <div className="flex space-x-1">
-                                            <button onClick={() => handleEditShiftTypeClick(type)} className="p-1 hover:bg-white/20 rounded"><Edit2 size={14} /></button>
-                                            <button onClick={() => deleteShiftType(type.id)} className="p-1 hover:bg-white/20 rounded"><Trash2 size={14} /></button>
-                                       </div>
-                                   </div>
-                               ))}
-                           </div>
-                           <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                               <h4 className="text-sm font-semibold text-slate-600 mb-3">{editingShiftType ? 'Editar Turno' : 'Crear Tipo de Turno'}</h4>
-                               <form onSubmit={handleCreateShiftType} className="space-y-3">
-                                   <input type="text" placeholder="Nombre (ej. Guardia, Noche)" className="w-full border rounded p-2 text-sm" value={newShiftType.name} onChange={e => setNewShiftType({...newShiftType, name: e.target.value})} required />
-                                   
-                                   <div className="grid grid-cols-2 gap-2">
-                                       <div>
-                                            <label className="text-xs text-slate-500 font-bold mb-1 block">Franja 1 (Inicio - Fin)</label>
-                                            <div className="flex space-x-1">
-                                                <input type="time" className="w-full border rounded p-1 text-sm" value={newShiftType.startTime} onChange={e => setNewShiftType({...newShiftType, startTime: e.target.value})} required />
-                                                <input type="time" className="w-full border rounded p-1 text-sm" value={newShiftType.endTime} onChange={e => setNewShiftType({...newShiftType, endTime: e.target.value})} required />
-                                            </div>
-                                       </div>
-                                       <div>
-                                            <label className="text-xs text-slate-500 font-bold mb-1 block">Franja 2 (Opcional)</label>
-                                            <div className="flex space-x-1">
-                                                <input type="time" className="w-full border rounded p-1 text-sm" value={newShiftType.startTime2} onChange={e => setNewShiftType({...newShiftType, startTime2: e.target.value})} />
-                                                <input type="time" className="w-full border rounded p-1 text-sm" value={newShiftType.endTime2} onChange={e => setNewShiftType({...newShiftType, endTime2: e.target.value})} />
-                                            </div>
-                                       </div>
-                                   </div>
-
-                                   <select className="w-full border rounded p-2 text-sm" value={newShiftType.color} onChange={e => setNewShiftType({...newShiftType, color: e.target.value})}>
-                                       <option value="bg-blue-100 text-blue-800 border-blue-300">Azul</option>
-                                       <option value="bg-green-100 text-green-800 border-green-300">Verde</option>
-                                       <option value="bg-amber-100 text-amber-800 border-amber-300">Ámbar (Mañana)</option>
-                                       <option value="bg-indigo-100 text-indigo-800 border-indigo-300">Índigo (Tarde)</option>
-                                       <option value="bg-slate-800 text-slate-200 border-slate-600">Oscuro (Noche)</option>
-                                       <option value="bg-purple-100 text-purple-800 border-purple-300">Morado</option>
-                                       <option value="bg-pink-100 text-pink-800 border-pink-300">Rosa</option>
-                                       <option value="bg-red-100 text-red-800 border-red-300">Rojo</option>
-                                   </select>
-                                   <div className="flex space-x-2">
-                                       <button type="submit" className="flex-1 bg-indigo-600 text-white py-2 rounded text-sm hover:bg-indigo-700 font-medium">
-                                           {editingShiftType ? 'Guardar Cambios' : 'Crear Turno'}
-                                       </button>
-                                       {editingShiftType && (
-                                           <button type="button" onClick={() => { setEditingShiftType(null); setNewShiftType({ name: '', color: 'bg-blue-100 text-blue-800 border-blue-300', startTime: '08:00', endTime: '15:00', startTime2: '', endTime2: '' }); }} className="bg-slate-300 text-slate-700 px-3 rounded hover:bg-slate-400">Cancel</button>
-                                       )}
-                                   </div>
-                               </form>
-                           </div>
-                      </div>
+                      
+                      <form onSubmit={handleCreateDept} className="space-y-4 border-t border-slate-100 pt-4">
+                          <h4 className="text-sm font-semibold text-slate-700">Crear Departamento</h4>
+                          <input required type="text" placeholder="Nombre" className="w-full border rounded p-2 text-sm" value={newDept.name} onChange={e => setNewDept({...newDept, name: e.target.value})} />
+                          <div>
+                              <p className="text-xs text-slate-500 mb-2">Asignar Supervisores:</p>
+                              <div className="max-h-24 overflow-y-auto border rounded p-2 space-y-1">
+                                  {users.filter(u => u.role !== Role.WORKER).map(u => (
+                                      <label key={u.id} className="flex items-center text-xs">
+                                          <input type="checkbox" className="mr-2" checked={newDept.supervisorIds.includes(u.id)} onChange={() => toggleSupervisorForNew(u.id)} />
+                                          {u.name}
+                                      </label>
+                                  ))}
+                              </div>
+                          </div>
+                          <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm hover:bg-slate-700">Añadir Dept.</button>
+                      </form>
                   </div>
                </div>
-           </div>
-       )}
-
-       {/* ... Comms Tab ... */}
-       {activeTab === 'comms' && (
-           <div className="space-y-6">
                
-               {/* SYSTEM MESSAGE CONFIG */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                   <h3 className="font-bold text-slate-800 mb-4 flex items-center text-blue-600">
-                      <Megaphone className="mr-2" size={20} /> Mensaje Global en Header
-                   </h3>
-                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700">
-                       Este mensaje aparecerá en la parte superior de la aplicación para todos los usuarios.
-                   </div>
-                   <form onSubmit={handleUpdateSystemMessage} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                       <div className="md:col-span-2">
-                           <label className="block text-sm font-medium text-slate-700 mb-1">Texto del Mensaje</label>
-                           <input type="text" className="w-full border rounded-lg p-2 text-sm" value={sysMsgForm.text} onChange={e => setSysMsgForm({...sysMsgForm, text: e.target.value})} placeholder="Ej: Mantenimiento programado para el viernes..." />
-                       </div>
-                       <div>
-                           <label className="block text-sm font-medium text-slate-700 mb-1">Color de Fondo</label>
-                           <select className="w-full border rounded-lg p-2 text-sm" value={sysMsgForm.color} onChange={e => setSysMsgForm({...sysMsgForm, color: e.target.value})}>
-                               <option value="bg-blue-100 text-blue-800 border-blue-200">Azul (Info)</option>
-                               <option value="bg-amber-100 text-amber-800 border-amber-200">Ámbar (Alerta)</option>
-                               <option value="bg-red-100 text-red-800 border-red-200">Rojo (Urgente)</option>
-                               <option value="bg-green-100 text-green-800 border-green-200">Verde (Éxito)</option>
-                               <option value="bg-slate-100 text-slate-800 border-slate-200">Gris (Neutro)</option>
-                           </select>
-                       </div>
-                       <div className="flex items-center space-x-4 mb-2">
-                           <label className="flex items-center space-x-2 cursor-pointer">
-                               <div className={`w-10 h-6 rounded-full p-1 transition-colors ${sysMsgForm.active ? 'bg-blue-600' : 'bg-slate-300'}`}>
-                                   <div className={`w-4 h-4 bg-white rounded-full transition-transform ${sysMsgForm.active ? 'translate-x-4' : ''}`}></div>
-                               </div>
-                               <input type="checkbox" className="hidden" checked={sysMsgForm.active} onChange={e => setSysMsgForm({...sysMsgForm, active: e.target.checked})} />
-                               <span className="text-sm font-medium text-slate-700">{sysMsgForm.active ? 'Visible' : 'Oculto'}</span>
-                           </label>
-                           <button type="submit" className="flex-1 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700">Actualizar Mensaje</button>
-                       </div>
-                   </form>
-               </div>
-
-               {/* EMAIL TEMPLATES */}
+               {/* SHIFT TYPES COMPONENT */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                    <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-                      <Mail className="mr-2 text-primary" size={20} /> Plantillas de Email
+                       <Clock className="mr-2 text-indigo-500" size={20} /> Tipos de Turno
                    </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                       <div className="col-span-1 border-r border-slate-100 pr-4 space-y-2">
-                           {emailTemplates.map(t => (
-                               <button key={t.id} onClick={() => setEditingTemplate(t)} className={`w-full text-left p-3 rounded-lg text-sm transition-colors ${editingTemplate?.id === t.id ? 'bg-primary text-white' : 'hover:bg-slate-50 text-slate-700'}`}>
-                                   <div className="font-bold mb-1">{t.name}</div>
-                               </button>
-                           ))}
-                       </div>
-                       <div className="col-span-2">
-                           {editingTemplate && (
-                               <form onSubmit={handleUpdateTemplate} className="space-y-4">
-                                   <div className="bg-slate-50 p-3 rounded-lg mb-4">
-                                       <div className="flex space-x-4">
-                                           <label className="flex items-center space-x-2 text-sm cursor-pointer"><input type="checkbox" checked={editingTemplate.recipients.includes(Role.WORKER)} onChange={() => toggleRecipient(Role.WORKER)} className="rounded text-primary" /><span>Trabajador</span></label>
-                                           <label className="flex items-center space-x-2 text-sm cursor-pointer"><input type="checkbox" checked={editingTemplate.recipients.includes(Role.SUPERVISOR)} onChange={() => toggleRecipient(Role.SUPERVISOR)} className="rounded text-primary" /><span>Supervisor</span></label>
-                                           <label className="flex items-center space-x-2 text-sm cursor-pointer"><input type="checkbox" checked={editingTemplate.recipients.includes(Role.ADMIN)} onChange={() => toggleRecipient(Role.ADMIN)} className="rounded text-primary" /><span>Admin</span></label>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       <div className="space-y-3">
+                           {shiftTypes.map(type => (
+                               <div key={type.id} className="flex items-center justify-between p-3 border border-slate-100 rounded-lg group">
+                                   <div className="flex items-center gap-3">
+                                       <div className={`w-8 h-8 rounded flex items-center justify-center text-[10px] font-bold ${type.color}`}>
+                                           {type.name.substring(0, 1)}
+                                       </div>
+                                       <div>
+                                           <p className="text-sm font-bold text-slate-700">{type.name}</p>
+                                           <p className="text-xs text-slate-500">
+                                               {type.startTime}-{type.endTime} 
+                                               {type.startTime2 ? ` / ${type.startTime2}-${type.endTime2}` : ''}
+                                           </p>
                                        </div>
                                    </div>
-                                   <input type="text" className="w-full border rounded-lg p-2 text-sm" value={editingTemplate.subject} onChange={e => setEditingTemplate({...editingTemplate, subject: e.target.value})} />
-                                   <textarea className="w-full border rounded-lg p-2 text-sm h-32" value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})} />
-                                   <div className="flex justify-end pt-2"><button type="submit" className="flex items-center bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90"><Save size={16} className="mr-2" /> Guardar Cambios</button></div>
-                               </form>
-                           )}
+                                   <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                       <button onClick={() => handleEditShiftTypeClick(type)} className="p-2 text-slate-400 hover:text-primary"><Edit2 size={16} /></button>
+                                       <button onClick={() => deleteShiftType(type.id)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+                                   </div>
+                               </div>
+                           ))}
                        </div>
+                       
+                       <form onSubmit={handleCreateShiftType} className="space-y-4 bg-slate-50 p-4 rounded-xl">
+                            <h4 className="text-sm font-semibold text-slate-700">{editingShiftType ? 'Editar Turno' : 'Crear Nuevo Turno'}</h4>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <label className="text-xs font-bold text-slate-500">Nombre</label>
+                                    <input required type="text" className="w-full border rounded p-2 text-sm" value={newShiftType.name} onChange={e => setNewShiftType({...newShiftType, name: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">Inicio 1</label>
+                                    <input required type="time" className="w-full border rounded p-2 text-sm" value={newShiftType.startTime} onChange={e => setNewShiftType({...newShiftType, startTime: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">Fin 1</label>
+                                    <input required type="time" className="w-full border rounded p-2 text-sm" value={newShiftType.endTime} onChange={e => setNewShiftType({...newShiftType, endTime: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">Inicio 2 (Opcional)</label>
+                                    <input type="time" className="w-full border rounded p-2 text-sm" value={newShiftType.startTime2} onChange={e => setNewShiftType({...newShiftType, startTime2: e.target.value})} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">Fin 2 (Opcional)</label>
+                                    <input type="time" className="w-full border rounded p-2 text-sm" value={newShiftType.endTime2} onChange={e => setNewShiftType({...newShiftType, endTime2: e.target.value})} />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="text-xs font-bold text-slate-500">Color</label>
+                                    <select className="w-full border rounded p-2 text-sm" value={newShiftType.color} onChange={e => setNewShiftType({...newShiftType, color: e.target.value})}>
+                                        <option value="bg-blue-100 text-blue-800 border-blue-300">Azul</option>
+                                        <option value="bg-amber-100 text-amber-800 border-amber-300">Naranja (Mañana)</option>
+                                        <option value="bg-indigo-100 text-indigo-800 border-indigo-300">Indigo (Tarde)</option>
+                                        <option value="bg-slate-800 text-slate-200 border-slate-600">Oscuro (Noche)</option>
+                                        <option value="bg-emerald-100 text-emerald-800 border-emerald-300">Verde</option>
+                                        <option value="bg-rose-100 text-rose-800 border-rose-300">Rosa</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                {editingShiftType && <button type="button" onClick={() => { setEditingShiftType(null); setNewShiftType({ name: '', color: 'bg-blue-100 text-blue-800 border-blue-300', startTime: '08:00', endTime: '15:00', startTime2: '', endTime2: '' }) }} className="flex-1 bg-white border border-slate-300 text-slate-700 py-2 rounded-lg text-sm">Cancelar</button>}
+                                <button type="submit" className="flex-1 bg-slate-800 text-white py-2 rounded-lg text-sm hover:bg-slate-700">{editingShiftType ? 'Guardar Cambios' : 'Crear Turno'}</button>
+                            </div>
+                       </form>
                    </div>
                </div>
-               
-               {/* CONFIGURACION EMAILJS */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                   <h3 className="font-bold text-slate-800 mb-4 flex items-center text-orange-600">
-                      <Mail className="mr-2" size={20} /> Configuración EmailJS (Sin Backend)
-                   </h3>
-                   <form onSubmit={handleSaveEmailConfig} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Service ID</label>
-                            <input type="text" className="w-full border rounded-lg p-2 text-sm" value={emailConfigForm.serviceId} onChange={e => setEmailConfigForm({...emailConfigForm, serviceId: e.target.value})} placeholder="service_xxx" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Template ID</label>
-                            <input type="text" className="w-full border rounded-lg p-2 text-sm" value={emailConfigForm.templateId} onChange={e => setEmailConfigForm({...emailConfigForm, templateId: e.target.value})} placeholder="template_xxx" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Public Key</label>
-                            <input type="text" className="w-full border rounded-lg p-2 text-sm" value={emailConfigForm.publicKey} onChange={e => setEmailConfigForm({...emailConfigForm, publicKey: e.target.value})} placeholder="user_xxx" />
-                        </div>
-                        <div className="md:col-span-3">
-                            <button type="submit" className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700">Guardar Credenciales EmailJS</button>
-                        </div>
-                   </form>
-                </div>
+           </div>
+       )}
 
-                {/* CONFIGURACION SMTP */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                   <h3 className="font-bold text-slate-800 mb-4 flex items-center text-blue-600">
-                      <Server className="mr-2" size={20} /> Configuración SMTP (Requiere Backend)
-                   </h3>
-                   <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700">
-                       Nota: Esta configuración se guardará para uso futuro. Actualmente la WebApp usa EmailJS porque se ejecuta en el navegador.
-                   </div>
-                   <form onSubmit={handleSaveSmtpConfig} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Host SMTP</label>
-                            <input type="text" className="w-full border rounded-lg p-2 text-sm" value={smtpConfigForm.host} onChange={e => setSmtpConfigForm({...smtpConfigForm, host: e.target.value})} placeholder="smtp.office365.com" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Puerto</label>
-                            <input type="text" className="w-full border rounded-lg p-2 text-sm" value={smtpConfigForm.port} onChange={e => setSmtpConfigForm({...smtpConfigForm, port: e.target.value})} placeholder="587" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Usuario</label>
-                            <input type="text" className="w-full border rounded-lg p-2 text-sm" value={smtpConfigForm.user} onChange={e => setSmtpConfigForm({...smtpConfigForm, user: e.target.value})} placeholder="tu@email.com" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
-                            <input type="password" className="w-full border rounded-lg p-2 text-sm" value={smtpConfigForm.pass} onChange={e => setSmtpConfigForm({...smtpConfigForm, pass: e.target.value})} placeholder="*****" />
-                        </div>
-                        <div className="md:col-span-2">
-                             <label className="flex items-center space-x-2 text-sm cursor-pointer mb-3">
-                                <input type="checkbox" checked={smtpConfigForm.secure} onChange={e => setSmtpConfigForm({...smtpConfigForm, secure: e.target.checked})} className="rounded text-blue-600" />
-                                <span>Usar conexión segura (SSL/TLS)</span>
-                             </label>
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Guardar Config SMTP</button>
-                        </div>
-                   </form>
+       {/* Users Tab */}
+       {activeTab === 'users' && (
+           <div className="space-y-6">
+                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="relative w-64">
+                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+                         <input 
+                            type="text" 
+                            placeholder="Buscar usuario..." 
+                            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                         />
+                    </div>
+                    <button onClick={() => setShowCreateUserModal(true)} className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+                         <Plus size={18} className="mr-2" /> Nuevo Usuario
+                    </button>
+                </div>
+                
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                            <tr>
+                                <th className="px-6 py-4">Usuario</th>
+                                <th className="px-6 py-4">Rol</th>
+                                <th className="px-6 py-4">Departamento</th>
+                                <th className="px-6 py-4 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {filteredUsers.map(user => (
+                                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-6 py-4 flex items-center gap-3">
+                                        <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full bg-slate-200" />
+                                        <div>
+                                            <p className="font-medium text-slate-800">{user.name}</p>
+                                            <p className="text-xs text-slate-500">{user.email}</p>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                            user.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' :
+                                            user.role === Role.SUPERVISOR ? 'bg-emerald-100 text-emerald-700' :
+                                            'bg-blue-100 text-blue-700'
+                                        }`}>{user.role}</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-slate-600">
+                                        {departments.find(d => d.id === user.departmentId)?.name || '-'}
+                                    </td>
+                                    <td className="px-6 py-4 text-right space-x-2">
+                                        <button onClick={() => setSelectedUser(user)} className="text-slate-400 hover:text-primary"><Edit2 size={18} /></button>
+                                        <button onClick={() => handleDeleteUserClick(user)} className="text-slate-400 hover:text-red-500"><Trash2 size={18} /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
            </div>
        )}
 
-       {/* ... Shifts and Users Tab content remains the same ... */}
+       {/* Shifts Tab */}
        {activeTab === 'shifts' && (
-           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
-               {/* SIDEBAR: CONTROLS */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col space-y-6 overflow-y-auto">
-                   <div>
-                       <h3 className="font-bold text-slate-800 mb-1">Gestión Visual</h3>
-                       <p className="text-xs text-slate-500">Selecciona usuario y dibuja en el calendario.</p>
-                   </div>
-                   
-                   <div>
-                       <label className="block text-xs font-bold text-slate-500 uppercase mb-2">1. Seleccionar Trabajador</label>
-                       <select 
-                           className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
-                           value={shiftSelectedUserId}
-                           onChange={e => setShiftSelectedUserId(e.target.value)}
-                       >
-                           <option value="">-- Elegir Empleado --</option>
-                           {users.map(u => (
-                               <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                           ))}
-                       </select>
-                   </div>
-                   
-                   {shiftSelectedUserId && (
-                       <div className="animate-in fade-in slide-in-from-left-4 duration-300">
-                           <label className="block text-xs font-bold text-slate-500 uppercase mb-3">2. Elegir Herramienta</label>
-                           <div className="space-y-3">
-                               {shiftTypes.map(type => (
-                                   <button 
-                                       key={type.id}
-                                       onClick={() => setPaintTool(type.id)}
-                                       className={`w-full flex items-center p-3 rounded-xl border transition-all text-left ${paintTool === type.id ? 'bg-slate-800 text-white border-slate-800 ring-2 ring-slate-400' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
-                                   >
-                                       <div className={`p-2 rounded-lg mr-3 shadow-sm ${type.color}`}>
-                                           <Clock size={16} />
-                                       </div>
-                                       <div>
-                                           <span className="block font-bold text-sm">{type.name}</span>
-                                           <span className="text-[10px] opacity-75">{type.startTime} - {type.endTime}</span>
-                                           {type.startTime2 && <span className="text-[10px] opacity-75 block">{type.startTime2} - {type.endTime2}</span>}
-                                       </div>
-                                       {paintTool === type.id && <Check size={16} className="ml-auto" />}
-                                   </button>
-                               ))}
+           <div className="space-y-6">
+               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                    <div>
+                         <h3 className="font-bold text-slate-800 mb-2">Editor de Turnos</h3>
+                         <p className="text-sm text-slate-500 mb-4">Selecciona una herramienta y un usuario, luego haz clic en los días.</p>
+                         <div className="flex gap-4 items-end">
+                             <div>
+                                 <label className="text-xs font-bold text-slate-500 block mb-1">Usuario</label>
+                                 <select className="border rounded p-2 text-sm w-48" value={shiftSelectedUserId} onChange={e => setShiftSelectedUserId(e.target.value)}>
+                                     <option value="">Seleccionar Usuario...</option>
+                                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                 </select>
+                             </div>
+                             <div>
+                                 <label className="text-xs font-bold text-slate-500 block mb-1">Mes</label>
+                                 <div className="flex items-center border rounded">
+                                     <button onClick={() => setShiftCurrentDate(new Date(shiftCurrentDate.getFullYear(), shiftCurrentDate.getMonth()-1, 1))} className="p-2 hover:bg-slate-100"><ChevronLeft size={16}/></button>
+                                     <span className="px-4 text-sm font-medium w-32 text-center capitalize">{shiftCurrentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}</span>
+                                     <button onClick={() => setShiftCurrentDate(new Date(shiftCurrentDate.getFullYear(), shiftCurrentDate.getMonth()+1, 1))} className="p-2 hover:bg-slate-100"><ChevronRight size={16}/></button>
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
 
-                               <button 
-                                   onClick={() => setPaintTool('ERASE')}
-                                   className={`w-full flex items-center p-3 rounded-xl border transition-all ${paintTool === 'ERASE' ? 'bg-red-50 border-red-500 ring-1 ring-red-500' : 'bg-white border-slate-200 hover:border-red-300'}`}
-                               >
-                                   <div className={`p-2 rounded-lg mr-3 ${paintTool === 'ERASE' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600'}`}>
-                                       <Eraser size={20} />
-                                   </div>
-                                   <div className="text-left">
-                                       <span className="block font-bold text-slate-700 text-sm">Borrador</span>
-                                       <span className="text-xs text-slate-500">Eliminar turno</span>
-                                   </div>
-                                   {paintTool === 'ERASE' && <Check size={16} className="ml-auto text-red-600" />}
-                               </button>
-                           </div>
-                       </div>
-                   )}
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <label className="text-xs font-bold text-slate-500 block mb-2">Herramienta de Pintado</label>
+                        <div className="flex flex-wrap gap-2 max-w-md">
+                            {shiftTypes.map(t => (
+                                <button 
+                                    key={t.id}
+                                    onClick={() => setPaintTool(t.id)}
+                                    className={`w-8 h-8 rounded flex items-center justify-center transition-all ring-2 ring-offset-1 ${paintTool === t.id ? 'ring-slate-800 scale-110' : 'ring-transparent opacity-80 hover:opacity-100'} ${t.color}`}
+                                    title={t.name}
+                                >
+                                    <span className="text-[10px] font-bold">{t.name.substring(0,1)}</span>
+                                </button>
+                            ))}
+                            <button 
+                                onClick={() => setPaintTool('ERASE')}
+                                className={`w-8 h-8 rounded flex items-center justify-center transition-all ring-2 ring-offset-1 bg-white border border-slate-300 text-red-500 ${paintTool === 'ERASE' ? 'ring-red-500 scale-110' : 'ring-transparent'}`}
+                                title="Borrar"
+                            >
+                                <Eraser size={16} />
+                            </button>
+                        </div>
+                    </div>
+               </div>
+
+               <div className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-hidden select-none">
+                    <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
+                        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map(day => (
+                            <div key={day} className="py-2 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{day}</div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-7">
+                        {renderShiftCalendar()}
+                    </div>
+               </div>
+           </div>
+       )}
+
+       {/* Comms Tab */}
+       {activeTab === 'comms' && (
+           <div className="space-y-8">
+               {/* System Message */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                        <Megaphone className="mr-2 text-rose-500" size={20} /> Mensaje Global (Banner)
+                    </h3>
+                    <form onSubmit={handleUpdateSystemMessage} className="space-y-4">
+                        <div className="flex gap-4">
+                            <div className="flex-1">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Texto del Mensaje</label>
+                                <input type="text" className="w-full border rounded p-2 text-sm" value={sysMsgForm.text} onChange={e => setSysMsgForm({...sysMsgForm, text: e.target.value})} placeholder="Ej: Oficina cerrada por festivo..." />
+                            </div>
+                            <div className="w-48">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Color de Fondo</label>
+                                <select className="w-full border rounded p-2 text-sm" value={sysMsgForm.color} onChange={e => setSysMsgForm({...sysMsgForm, color: e.target.value})}>
+                                    <option value="bg-blue-100 text-blue-800 border-blue-200">Azul (Info)</option>
+                                    <option value="bg-amber-100 text-amber-800 border-amber-200">Ámbar (Alerta)</option>
+                                    <option value="bg-red-100 text-red-800 border-red-200">Rojo (Urgente)</option>
+                                    <option value="bg-emerald-100 text-emerald-800 border-emerald-200">Verde (Éxito)</option>
+                                    <option value="bg-slate-800 text-white border-slate-600">Oscuro (Noticia)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                             <label className="flex items-center text-sm font-medium text-slate-700 cursor-pointer">
+                                 <input type="checkbox" className="mr-2 w-4 h-4 text-primary rounded" checked={sysMsgForm.active} onChange={e => setSysMsgForm({...sysMsgForm, active: e.target.checked})} />
+                                 Mostrar Mensaje en Cabecera
+                             </label>
+                             <button type="submit" className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700">Actualizar Banner</button>
+                        </div>
+                    </form>
+               </div>
+
+               {/* Email Config */}
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                        <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                            <Server className="mr-2 text-blue-600" size={20} /> Configuración SMTP (Vercel API)
+                        </h3>
+                        <p className="text-xs text-slate-500 mb-4">Recomendado para producción. Requiere función serverless.</p>
+                        <form onSubmit={handleSaveSmtpConfig} className="space-y-3">
+                            <div><label className="text-xs font-bold text-slate-500">Host</label><input className="w-full border rounded p-2 text-sm" value={smtpConfigForm.host} onChange={e => setSmtpConfigForm({...smtpConfigForm, host: e.target.value})} placeholder="smtp.example.com" /></div>
+                            <div className="flex gap-2">
+                                <div className="flex-1"><label className="text-xs font-bold text-slate-500">Port</label><input className="w-full border rounded p-2 text-sm" value={smtpConfigForm.port} onChange={e => setSmtpConfigForm({...smtpConfigForm, port: e.target.value})} placeholder="587" /></div>
+                                <div className="flex items-end pb-2"><label className="text-xs flex items-center"><input type="checkbox" className="mr-1" checked={smtpConfigForm.secure} onChange={e => setSmtpConfigForm({...smtpConfigForm, secure: e.target.checked})} /> SSL/TLS</label></div>
+                            </div>
+                            <div><label className="text-xs font-bold text-slate-500">User</label><input className="w-full border rounded p-2 text-sm" value={smtpConfigForm.user} onChange={e => setSmtpConfigForm({...smtpConfigForm, user: e.target.value})} placeholder="user@example.com" /></div>
+                            <div><label className="text-xs font-bold text-slate-500">Password</label><input type="password" className="w-full border rounded p-2 text-sm" value={smtpConfigForm.pass} onChange={e => setSmtpConfigForm({...smtpConfigForm, pass: e.target.value})} /></div>
+                            <button type="submit" className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg text-sm font-medium hover:bg-slate-200">Guardar SMTP</button>
+                        </form>
+                   </div>
                    
-                   <div className="mt-auto pt-6 border-t border-slate-100">
-                       <div className="bg-blue-50 p-3 rounded-lg flex items-start">
-                           <div className="text-blue-500 mr-2 mt-0.5"><Palette size={16} /></div>
-                           <p className="text-xs text-blue-700 leading-relaxed">
-                               <strong>Instrucciones:</strong> Haz clic en los días del calendario para aplicar el turno seleccionado.
-                           </p>
-                       </div>
+                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                        <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                            <Mail className="mr-2 text-orange-500" size={20} /> Configuración EmailJS (Client Side)
+                        </h3>
+                        <p className="text-xs text-slate-500 mb-4">Fallback si SMTP falla. Gratis hasta 200 emails/mes.</p>
+                        <form onSubmit={handleSaveEmailConfig} className="space-y-3">
+                            <div><label className="text-xs font-bold text-slate-500">Service ID</label><input className="w-full border rounded p-2 text-sm" value={emailConfigForm.serviceId} onChange={e => setEmailConfigForm({...emailConfigForm, serviceId: e.target.value})} /></div>
+                            <div><label className="text-xs font-bold text-slate-500">Template ID</label><input className="w-full border rounded p-2 text-sm" value={emailConfigForm.templateId} onChange={e => setEmailConfigForm({...emailConfigForm, templateId: e.target.value})} /></div>
+                            <div><label className="text-xs font-bold text-slate-500">Public Key</label><input className="w-full border rounded p-2 text-sm" value={emailConfigForm.publicKey} onChange={e => setEmailConfigForm({...emailConfigForm, publicKey: e.target.value})} /></div>
+                            <button type="submit" className="w-full bg-slate-100 text-slate-700 py-2 rounded-lg text-sm font-medium hover:bg-slate-200">Guardar EmailJS</button>
+                        </form>
+                        
+                        <div className="mt-4 pt-4 border-t border-slate-100">
+                             <h4 className="text-xs font-bold text-slate-700 mb-2">Probar Envío</h4>
+                             <div className="flex gap-2">
+                                 <input className="flex-1 border rounded p-2 text-sm" placeholder="tu@email.com" value={testEmailAddress} onChange={e => setTestEmailAddress(e.target.value)} />
+                                 <button onClick={() => sendTestEmail(testEmailAddress)} className="bg-slate-800 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700"><Send size={16}/></button>
+                             </div>
+                        </div>
                    </div>
                </div>
-               
-               {/* MAIN CALENDAR AREA */}
-               <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden h-full">
-                   {/* Calendar Header */}
-                   <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 flex-shrink-0">
-                       <button onClick={() => setShiftCurrentDate(new Date(shiftCurrentDate.getFullYear(), shiftCurrentDate.getMonth() - 1, 1))} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronLeft /></button>
-                       <h3 className="text-lg font-bold text-slate-800 capitalize">
-                           {shiftCurrentDate.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}
-                       </h3>
-                       <button onClick={() => setShiftCurrentDate(new Date(shiftCurrentDate.getFullYear(), shiftCurrentDate.getMonth() + 1, 1))} className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"><ChevronRight /></button>
-                   </div>
-                   
-                   {/* Calendar Header Row */}
-                   <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200 flex-shrink-0">
-                       {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
-                           <div key={day} className="py-2 text-center text-xs font-bold text-slate-500 uppercase">
-                               {day}
+
+               {/* Templates */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                   <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                       <FileText className="mr-2 text-primary" size={20} /> Plantillas de Correo
+                   </h3>
+                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                       {emailTemplates.map(tpl => (
+                           <div key={tpl.id} className="border border-slate-200 rounded-xl p-4 hover:border-primary transition-colors cursor-pointer group" onClick={() => setEditingTemplate(tpl)}>
+                               <div className="flex justify-between items-start mb-2">
+                                   <span className="text-xs font-bold bg-slate-100 px-2 py-1 rounded text-slate-600">{tpl.eventType}</span>
+                                   <Edit2 size={16} className="text-slate-300 group-hover:text-primary" />
+                               </div>
+                               <h4 className="font-bold text-slate-800 text-sm mb-1">{tpl.name}</h4>
+                               <p className="text-xs text-slate-500 truncate">{tpl.subject}</p>
                            </div>
                        ))}
-                   </div>
-                   
-                   {/* Calendar Grid Container with Scroll */}
-                   <div className="flex-1 overflow-y-auto bg-white custom-scrollbar">
-                       {!shiftSelectedUserId ? (
-                           <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                               <CalendarDays size={48} className="mb-4 opacity-50" />
-                               <p>Selecciona un trabajador para comenzar a asignar turnos.</p>
-                           </div>
-                       ) : (
-                           <div className="grid grid-cols-7 auto-rows-fr">
-                               {renderShiftCalendar()}
-                           </div>
-                       )}
-                   </div>
-               </div>
-           </div>
-       )}
-
-       {/* ... Users Tab content remains the same ... */}
-       {activeTab === 'users' && (
-           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                   {/* Search & Create User Button */}
-                   <div className="relative w-full max-w-sm">
-                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-                       <input type="text" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary" placeholder="Buscar usuario..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                   </div>
-                   <button onClick={() => setShowCreateUserModal(true)} className="flex items-center bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700">
-                       <Plus size={16} className="mr-2" /> Nuevo Usuario
-                   </button>
-               </div>
-               {/* Users Table */}
-               <div className="overflow-x-auto">
-                   <table className="w-full">
-                       <thead className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wider text-left">
-                           <tr>
-                               <th className="px-6 py-3">Usuario</th>
-                               <th className="px-6 py-3">Rol</th>
-                               <th className="px-6 py-3">Dept.</th>
-                               <th className="px-6 py-3">Color</th>
-                               <th className="px-6 py-3 text-right">Acciones</th>
-                           </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-100">
-                           {filteredUsers.map(user => (
-                               <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                                   <td className="px-6 py-4">
-                                       <div className="flex items-center">
-                                           <img src={user.avatarUrl} className="w-8 h-8 rounded-full mr-3 object-cover" alt="" />
-                                           <div><p className="text-sm font-semibold text-slate-800">{user.name}</p></div>
-                                       </div>
-                                   </td>
-                                   <td className="px-6 py-4"><span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{user.role}</span></td>
-                                   <td className="px-6 py-4 text-sm text-slate-600">{departments.find(d => d.id === user.departmentId)?.name || '-'}</td>
-                                   <td className="px-6 py-4">
-                                       <div className="w-6 h-6 rounded-full border border-slate-200" style={{backgroundColor: user.calendarColor || '#3b82f6'}}></div>
-                                   </td>
-                                   <td className="px-6 py-4 text-right">
-                                       <div className="flex justify-end items-center space-x-2">
-                                           <button onClick={() => setSelectedUser(user)} className="text-slate-500 hover:text-primary transition-colors flex items-center text-sm font-medium"><Settings size={16} className="mr-1" /> Gestionar</button>
-                                           <button onClick={() => handleDeleteUserClick(user)} className="text-slate-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition-colors"><Trash2 size={16} /></button>
-                                       </div>
-                                   </td>
-                               </tr>
-                           ))}
-                       </tbody>
-                   </table>
-               </div>
-           </div>
-       )}
-
-       {/* ... Modals (Create User, Detail User, Confirm, etc.) remain the same ... */}
-       {showCreateUserModal && (
-           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-               <div className="bg-white rounded-xl shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-                   <div className="flex justify-between items-center mb-6">
-                       <h3 className="text-lg font-bold">Crear Nuevo Usuario</h3>
-                       <button onClick={() => setShowCreateUserModal(false)}><X className="text-slate-400 hover:text-slate-600" /></button>
-                   </div>
-                   <form onSubmit={handleCreateUser} className="space-y-4">
-                       <div><label className="block text-sm font-medium text-slate-700 mb-1">Nombre</label><input type="text" className="w-full border rounded-lg p-2 text-sm" required value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} /></div>
-                       <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input type="email" className="w-full border rounded-lg p-2 text-sm" required value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} /></div>
-                       <div className="grid grid-cols-2 gap-4">
-                           <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Rol</label>
-                               <select className="w-full border rounded-lg p-2 text-sm" value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value as Role})}><option value={Role.WORKER}>Trabajador</option><option value={Role.SUPERVISOR}>Supervisor</option><option value={Role.ADMIN}>Administrador</option></select>
-                           </div>
-                           <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
-                               <select className="w-full border rounded-lg p-2 text-sm" value={newUserForm.departmentId} onChange={e => setNewUserForm({...newUserForm, departmentId: e.target.value})} disabled={newUserForm.role === Role.ADMIN}><option value="">{newUserForm.role === Role.ADMIN ? 'N/A' : 'Seleccionar...'}</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-                           </div>
-                       </div>
-                       
-                       <div>
-                           <label className="block text-sm font-medium text-slate-700 mb-1">Color de Calendario</label>
-                           <div className="flex items-center space-x-2">
-                               <input type="color" className="w-10 h-10 p-1 rounded border cursor-pointer" value={newUserForm.calendarColor} onChange={e => setNewUserForm({...newUserForm, calendarColor: e.target.value})} />
-                               <span className="text-sm text-slate-500">Para identificar sus turnos.</span>
-                           </div>
-                       </div>
-                       
-                       <div className="border-t border-slate-100 pt-4 mt-2">
-                           <h4 className="text-sm font-bold text-slate-700 mb-2">Saldos Iniciales</h4>
-                           <div className="grid grid-cols-2 gap-4">
-                               <div><label className="block text-xs font-medium text-slate-500 mb-1 uppercase">Ajuste Vac.</label><input type="number" className="w-full border rounded-lg p-2 text-sm" value={newUserForm.initialVacation} onChange={e => setNewUserForm({...newUserForm, initialVacation: Number(e.target.value)})} /></div>
-                               <div><label className="block text-xs font-medium text-slate-500 mb-1 uppercase">Saldo Horas</label><input type="number" className="w-full border rounded-lg p-2 text-sm" value={newUserForm.initialOvertime} onChange={e => setNewUserForm({...newUserForm, initialOvertime: Number(e.target.value)})} /></div>
-                           </div>
-                       </div>
-                       <button type="submit" className="w-full bg-slate-800 text-white py-2 rounded-lg font-medium hover:bg-slate-700 mt-2">Crear Usuario</button>
-                   </form>
-               </div>
-           </div>
-       )}
-
-       {/* MODAL: USER DETAIL (Same as before) */}
-       {selectedUser && (
-           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col h-[600px]">
-                   <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 flex-shrink-0">
-                       <div className="flex items-center space-x-3"><img src={selectedUser.avatarUrl} className="w-10 h-10 rounded-full bg-slate-200" alt="" /><div><h3 className="font-bold text-slate-800">{selectedUser.name}</h3></div></div>
-                       <button onClick={() => setSelectedUser(null)}><X /></button>
-                   </div>
-                   
-                   <div className="flex border-b border-slate-100 bg-white flex-shrink-0">
-                       <button onClick={() => setActiveUserTab('info')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeUserTab === 'info' ? 'text-primary border-primary bg-primary/5' : 'text-slate-500 border-transparent hover:text-slate-700'}`}>Perfil</button>
-                       <button onClick={() => setActiveUserTab('absences')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeUserTab === 'absences' ? 'text-primary border-primary bg-primary/5' : 'text-slate-500 border-transparent hover:text-slate-700'}`}>Ausencias</button>
-                       <button onClick={() => setActiveUserTab('overtime')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeUserTab === 'overtime' ? 'text-primary border-primary bg-primary/5' : 'text-slate-500 border-transparent hover:text-slate-700'}`}>Horas</button>
-                       <button onClick={() => setActiveUserTab('adjustments')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeUserTab === 'adjustments' ? 'text-primary border-primary bg-primary/5' : 'text-slate-500 border-transparent hover:text-slate-700'}`}>Ajustes</button>
-                   </div>
-
-                   <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
-                       {activeUserTab === 'info' && (
-                           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                               <h4 className="font-bold text-slate-700 flex items-center"><UserIcon size={16} className="mr-2"/> Editar Perfil</h4>
-                               <div><label className="text-xs uppercase text-slate-500 font-bold">Nombre</label><input type="text" className="w-full border-b py-2 text-sm focus:border-primary outline-none" value={selectedUser.name} onChange={e => updateUser(selectedUser.id, { name: e.target.value })} /></div>
-                               <div><label className="text-xs uppercase text-slate-500 font-bold">Email</label><input type="text" className="w-full border-b py-2 text-sm focus:border-primary outline-none" value={selectedUser.email} onChange={e => updateUser(selectedUser.id, { email: e.target.value })} /></div>
-                               <div><label className="text-xs uppercase text-slate-500 font-bold">Color Calendario</label><div className="flex items-center mt-2"><input type="color" className="w-8 h-8 rounded border p-0.5 cursor-pointer" value={selectedUser.calendarColor || '#3b82f6'} onChange={e => updateUser(selectedUser.id, { calendarColor: e.target.value })} /></div></div>
-                               <div>
-                                   <label className="text-xs uppercase text-slate-500 font-bold">Contraseña</label>
-                                   <div className="flex space-x-2 mt-1">
-                                       <input type="text" className="flex-1 border-b py-2 text-sm focus:border-primary outline-none" placeholder="Nueva contraseña" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-                                       <button onClick={handleUpdatePassword} className="text-xs bg-slate-800 text-white px-3 py-1 rounded hover:bg-slate-700"><Key size={14} className="inline mr-1"/>Actualizar</button>
-                                   </div>
-                               </div>
-
-                               {(selectedUser.role === Role.SUPERVISOR || selectedUser.role === Role.ADMIN) && (
-                                   <div className="mt-4 pt-4 border-t border-slate-100">
-                                       <label className="text-xs uppercase text-slate-500 font-bold mb-2 block">Departamentos Supervisados</label>
-                                       <div className="bg-slate-50 border rounded-lg p-3 max-h-40 overflow-y-auto grid grid-cols-2 gap-2">
-                                           {departments.map(dept => (
-                                               <label key={dept.id} className="flex items-center space-x-2 text-sm cursor-pointer p-1 hover:bg-slate-100 rounded">
-                                                   <input 
-                                                       type="checkbox" 
-                                                       checked={dept.supervisorIds.includes(selectedUser.id)} 
-                                                       onChange={() => toggleDepartmentSupervisor(dept.id, selectedUser.id)}
-                                                       className="rounded text-primary focus:ring-primary" 
-                                                   />
-                                                   <span>{dept.name}</span>
-                                               </label>
-                                           ))}
-                                       </div>
-                                   </div>
-                               )}
-                           </div>
-                       )}
-
-                       {activeUserTab === 'absences' && (
-                           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden h-full">
-                               <table className="w-full text-sm">
-                                   <thead className="bg-slate-50 text-xs text-slate-500 uppercase font-semibold">
-                                       <tr><th className="px-4 py-3 text-left">Fechas</th><th className="px-4 py-3 text-left">Tipo</th><th className="px-4 py-3 text-right">Estado</th><th className="px-4 py-3"></th></tr>
-                                   </thead>
-                                   <tbody className="divide-y divide-slate-100">
-                                       {requests.filter(r => r.userId === selectedUser.id).length === 0 ? (
-                                           <tr><td colSpan={4} className="text-center p-4 text-slate-400">Sin registros</td></tr>
-                                       ) : requests.filter(r => r.userId === selectedUser.id).sort((a,b) => b.startDate.localeCompare(a.startDate)).map(r => (
-                                           <tr key={r.id}>
-                                               <td className="px-4 py-3">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
-                                               <td className="px-4 py-3">{absenceTypes.find(t => t.id === r.typeId)?.name}</td>
-                                               <td className="px-4 py-3 text-right"><span className={`px-2 py-0.5 rounded text-xs font-bold ${r.status === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{r.status}</span></td>
-                                               <td className="px-4 py-3 text-right"><button onClick={() => handleDeleteRequestClick(r.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button></td>
-                                           </tr>
-                                       ))}
-                                   </tbody>
-                               </table>
-                           </div>
-                       )}
-
-                       {activeUserTab === 'overtime' && (
-                           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden h-full">
-                               <table className="w-full text-sm">
-                                   <thead className="bg-slate-50 text-xs text-slate-500 uppercase font-semibold">
-                                       <tr><th className="px-4 py-3 text-left">Fecha</th><th className="px-4 py-3 text-left">Concepto</th><th className="px-4 py-3 text-right">Horas</th><th className="px-4 py-3"></th></tr>
-                                   </thead>
-                                   <tbody className="divide-y divide-slate-100">
-                                       {overtime.filter(o => o.userId === selectedUser.id).length === 0 ? (
-                                            <tr><td colSpan={4} className="text-center p-4 text-slate-400">Sin registros</td></tr>
-                                       ) : overtime.filter(o => o.userId === selectedUser.id).sort((a,b) => b.date.localeCompare(a.date)).map(o => (
-                                           <tr key={o.id}>
-                                               <td className="px-4 py-3">{new Date(o.date).toLocaleDateString()}</td>
-                                               <td className="px-4 py-3">
-                                                   {o.description}
-                                                   {o.redemptionType && <span className="ml-1 text-[10px] bg-purple-100 text-purple-700 px-1 rounded">CANJE</span>}
-                                               </td>
-                                               <td className="px-4 py-3 text-right font-bold">{o.hours > 0 ? `+${o.hours}` : o.hours}</td>
-                                               <td className="px-4 py-3 text-right">
-                                                   <div className="flex justify-end space-x-2">
-                                                        {o.hours < 0 && o.status === RequestStatus.APPROVED && (
-                                                            <button onClick={() => setViewingRedemption(o)} className="text-blue-500 hover:text-blue-700"><Eye size={14} /></button>
-                                                        )}
-                                                        <button onClick={() => handleDeleteOvertimeClick(o.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
-                                                   </div>
-                                               </td>
-                                           </tr>
-                                       ))}
-                                   </tbody>
-                               </table>
-                           </div>
-                       )}
-
-                       {activeUserTab === 'adjustments' && (
-                           <div className="space-y-6">
-                               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                   <h4 className="font-bold text-slate-700 mb-4 flex items-center"><CalendarDays size={16} className="mr-2 text-blue-500"/> Ajuste Manual de Vacaciones</h4>
-                                   <div className="flex space-x-2 mb-4">
-                                       <input type="number" className="w-24 border rounded-lg p-2 text-sm" placeholder="Días (+/-)" value={adjustDays} onChange={e => setAdjustDays(Number(e.target.value))} />
-                                       <input type="text" className="flex-1 border rounded-lg p-2 text-sm" placeholder="Motivo del ajuste" value={adjustReasonDays} onChange={e => setAdjustReasonDays(e.target.value)} />
-                                       <button onClick={handleAdjustDays} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Aplicar</button>
-                                   </div>
-                                   <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4">
-                                       <span className="text-sm text-blue-800">Saldo Total Actual:</span>
-                                       <span className="font-bold text-lg text-blue-800">{22 + (selectedUser.vacationAdjustment || 0)} días</span>
-                                   </div>
-                                   
-                                   {selectedUser.vacationHistory && selectedUser.vacationHistory.length > 0 && (
-                                       <div>
-                                           <p className="text-xs font-bold text-slate-500 uppercase mb-2">Historial de Ajustes</p>
-                                           <div className="bg-slate-50 border rounded-lg max-h-40 overflow-y-auto">
-                                               {selectedUser.vacationHistory.map(log => (
-                                                   <div key={log.id} className="flex justify-between p-2 text-xs border-b last:border-0 hover:bg-slate-100">
-                                                       <span className="text-slate-500">{new Date(log.date).toLocaleDateString()}</span>
-                                                       <span className="flex-1 mx-4 text-slate-700 font-medium truncate">{log.reason}</span>
-                                                       <span className={`font-bold ${log.days > 0 ? 'text-green-600' : 'text-red-600'}`}>{log.days > 0 ? '+' : ''}{log.days}</span>
-                                                   </div>
-                                               ))}
-                                           </div>
-                                       </div>
-                                   )}
-                               </div>
-
-                               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                   <h4 className="font-bold text-slate-700 mb-4 flex items-center"><Clock size={16} className="mr-2 text-purple-500"/> Ajuste Manual de Horas</h4>
-                                   <div className="flex space-x-2">
-                                       <input type="number" className="w-24 border rounded-lg p-2 text-sm" placeholder="Horas (+/-)" value={adjustHours} onChange={e => setAdjustHours(Number(e.target.value))} />
-                                       <input type="text" className="flex-1 border rounded-lg p-2 text-sm" placeholder="Motivo del ajuste" value={adjustReasonHours} onChange={e => setAdjustReasonHours(e.target.value)} />
-                                       <button onClick={handleAdjustHours} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700">Aplicar</button>
-                                   </div>
-                                   <p className="text-xs text-slate-400 mt-2 italic">Esto creará un registro de horas con estado "Aprobado" automáticamente.</p>
-                               </div>
-                           </div>
-                       )}
                    </div>
                </div>
            </div>
        )}
        
-       {/* ... Confirmation Modals ... */}
-        {confirmModal && (
+       {/* Modals */}
+       
+       {/* EDIT DEPARTMENT MODAL */}
+       {editingDept && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+                     <h3 className="font-bold text-lg mb-4">Editar Departamento</h3>
+                     <form onSubmit={handleUpdateDept} className="space-y-4">
+                          <input className="w-full border rounded p-2" value={editingDept.name} onChange={e => setEditingDept({...editingDept, name: e.target.value})} />
+                          <div className="max-h-40 overflow-y-auto border rounded p-2 space-y-1">
+                                  {users.filter(u => u.role !== Role.WORKER).map(u => (
+                                      <label key={u.id} className="flex items-center text-sm">
+                                          <input type="checkbox" className="mr-2" checked={editingDept.supervisorIds.includes(u.id)} onChange={() => toggleSupervisorForEdit(u.id)} />
+                                          {u.name}
+                                      </label>
+                                  ))}
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setEditingDept(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded">Cancelar</button>
+                              <button type="submit" className="px-4 py-2 bg-slate-800 text-white rounded hover:bg-slate-700">Guardar</button>
+                          </div>
+                     </form>
+                </div>
+            </div>
+       )}
+
+       {/* EDIT ABSENCE TYPE MODAL */}
+       {editingType && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+                     <h3 className="font-bold text-lg mb-4">Editar Tipo de Ausencia</h3>
+                     <form onSubmit={handleUpdateType} className="space-y-4">
+                          <input className="w-full border rounded p-2" value={editingType.name} onChange={e => setEditingType({...editingType, name: e.target.value})} />
+                          <div className="flex gap-4">
+                                <label className="flex items-center text-sm"><input type="checkbox" className="mr-2" checked={editingType.isClosedRange} onChange={e => setEditingType({...editingType, isClosedRange: e.target.checked})} /> Rango Cerrado</label>
+                                <label className="flex items-center text-sm"><input type="checkbox" className="mr-2" checked={editingType.deductsDays} onChange={e => setEditingType({...editingType, deductsDays: e.target.checked})} /> Descuenta</label>
+                          </div>
+                           <select className="w-full border rounded p-2 text-sm" value={editingType.color} onChange={e => setEditingType({...editingType, color: e.target.value})}>
+                               <option value="bg-gray-100 text-gray-800">Gris</option>
+                               <option value="bg-blue-100 text-blue-800">Azul</option>
+                               <option value="bg-green-100 text-green-800">Verde</option>
+                               <option value="bg-yellow-100 text-yellow-800">Amarillo</option>
+                               <option value="bg-red-100 text-red-800">Rojo</option>
+                               <option value="bg-purple-100 text-purple-800">Morado</option>
+                          </select>
+                          <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setEditingType(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded">Cancelar</button>
+                              <button type="submit" className="px-4 py-2 bg-slate-800 text-white rounded hover:bg-slate-700">Guardar</button>
+                          </div>
+                     </form>
+                </div>
+            </div>
+       )}
+       
+       {/* EDIT EMAIL TEMPLATE MODAL */}
+       {editingTemplate && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+                     <h3 className="font-bold text-lg mb-4">Editar Plantilla: {editingTemplate.name}</h3>
+                     <form onSubmit={handleUpdateTemplate} className="space-y-4">
+                          <div><label className="text-xs font-bold text-slate-500">Asunto</label><input className="w-full border rounded p-2" value={editingTemplate.subject} onChange={e => setEditingTemplate({...editingTemplate, subject: e.target.value})} /></div>
+                          <div><label className="text-xs font-bold text-slate-500">Cuerpo HTML</label><textarea className="w-full border rounded p-2 font-mono text-xs" rows={6} value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})} /></div>
+                          <div>
+                              <label className="text-xs font-bold text-slate-500 mb-1 block">Destinatarios</label>
+                              <div className="flex gap-4">
+                                  {[Role.WORKER, Role.SUPERVISOR, Role.ADMIN].map(role => (
+                                      <label key={role} className="flex items-center text-sm"><input type="checkbox" className="mr-2" checked={editingTemplate.recipients.includes(role)} onChange={() => toggleRecipient(role)} /> {role}</label>
+                                  ))}
+                              </div>
+                          </div>
+                          <div className="bg-slate-50 p-3 rounded text-xs text-slate-500">
+                              Variables disponibles: {'{{name}}'}, {'{{hours}}'}, {'{{type}}'}, {'{{description}}'}
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setEditingTemplate(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded">Cancelar</button>
+                              <button type="submit" className="px-4 py-2 bg-slate-800 text-white rounded hover:bg-slate-700">Guardar</button>
+                          </div>
+                     </form>
+                </div>
+            </div>
+       )}
+
+       {/* CREATE USER MODAL */}
+       {showCreateUserModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                 <div className="bg-white rounded-xl shadow-lg w-full max-w-lg p-6">
+                      <h3 className="font-bold text-lg mb-4">Alta de Empleado</h3>
+                      <form onSubmit={handleCreateUser} className="space-y-4">
+                           <div className="grid grid-cols-2 gap-4">
+                               <input required placeholder="Nombre Completo" className="w-full border rounded p-2" value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} />
+                               <input required type="email" placeholder="Email" className="w-full border rounded p-2" value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} />
+                           </div>
+                           <div className="grid grid-cols-2 gap-4">
+                               <select className="w-full border rounded p-2" value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value as Role})}>
+                                    <option value={Role.WORKER}>Trabajador</option>
+                                    <option value={Role.SUPERVISOR}>Supervisor</option>
+                                    <option value={Role.ADMIN}>Administrador</option>
+                               </select>
+                               {newUserForm.role !== Role.ADMIN && (
+                                   <select className="w-full border rounded p-2" value={newUserForm.departmentId} onChange={e => setNewUserForm({...newUserForm, departmentId: e.target.value})}>
+                                       <option value="">Seleccionar Dept...</option>
+                                       {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                   </select>
+                               )}
+                           </div>
+                           <div className="grid grid-cols-3 gap-4 bg-slate-50 p-3 rounded-lg">
+                               <div>
+                                   <label className="text-xs font-bold text-slate-500">Saldo Vacaciones</label>
+                                   <input type="number" className="w-full border rounded p-1" value={newUserForm.initialVacation} onChange={e => setNewUserForm({...newUserForm, initialVacation: Number(e.target.value)})} />
+                               </div>
+                               <div>
+                                   <label className="text-xs font-bold text-slate-500">Saldo Horas</label>
+                                   <input type="number" className="w-full border rounded p-1" value={newUserForm.initialOvertime} onChange={e => setNewUserForm({...newUserForm, initialOvertime: Number(e.target.value)})} />
+                               </div>
+                               <div>
+                                   <label className="text-xs font-bold text-slate-500">Color Calendario</label>
+                                   <input type="color" className="w-full h-8 border rounded cursor-pointer" value={newUserForm.calendarColor} onChange={e => setNewUserForm({...newUserForm, calendarColor: e.target.value})} />
+                               </div>
+                           </div>
+                           <div className="flex gap-2 justify-end pt-2">
+                               <button type="button" onClick={() => setShowCreateUserModal(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded">Cancelar</button>
+                               <button type="submit" className="px-4 py-2 bg-slate-800 text-white rounded hover:bg-slate-700">Crear Usuario</button>
+                           </div>
+                      </form>
+                 </div>
+            </div>
+       )}
+
+       {/* EDIT USER DETAILS MODAL */}
+       {selectedUser && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                 <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                      <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                           <div className="flex items-center gap-4">
+                               <img src={selectedUser.avatarUrl} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" />
+                               <div>
+                                   <h3 className="font-bold text-lg text-slate-800">{selectedUser.name}</h3>
+                                   <p className="text-sm text-slate-500">{selectedUser.email}</p>
+                               </div>
+                           </div>
+                           <button onClick={() => setSelectedUser(null)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                      </div>
+                      
+                      <div className="flex border-b border-slate-200">
+                           <button onClick={() => setActiveUserTab('info')} className={`px-6 py-3 text-sm font-medium ${activeUserTab === 'info' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:bg-slate-50'}`}>Información</button>
+                           <button onClick={() => setActiveUserTab('absences')} className={`px-6 py-3 text-sm font-medium ${activeUserTab === 'absences' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:bg-slate-50'}`}>Ausencias</button>
+                           <button onClick={() => setActiveUserTab('overtime')} className={`px-6 py-3 text-sm font-medium ${activeUserTab === 'overtime' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:bg-slate-50'}`}>Bolsa Horas</button>
+                           <button onClick={() => setActiveUserTab('adjustments')} className={`px-6 py-3 text-sm font-medium ${activeUserTab === 'adjustments' ? 'border-b-2 border-slate-800 text-slate-800' : 'text-slate-500 hover:bg-slate-50'}`}>Ajustes</button>
+                      </div>
+
+                      <div className="p-6 overflow-y-auto bg-slate-50/50 flex-1">
+                           {activeUserTab === 'info' && (
+                               <div className="space-y-6">
+                                   <div className="grid grid-cols-2 gap-6">
+                                       <div>
+                                           <label className="text-xs font-bold text-slate-500 block mb-1">Nombre</label>
+                                           <input className="w-full border rounded p-2 bg-white" value={selectedUser.name} onChange={e => updateUser(selectedUser.id, { name: e.target.value })} />
+                                       </div>
+                                       <div>
+                                           <label className="text-xs font-bold text-slate-500 block mb-1">Email</label>
+                                           <input className="w-full border rounded p-2 bg-white" value={selectedUser.email} onChange={e => updateUser(selectedUser.id, { email: e.target.value })} />
+                                       </div>
+                                       <div>
+                                           <label className="text-xs font-bold text-slate-500 block mb-1">Rol</label>
+                                           <select className="w-full border rounded p-2 bg-white" value={selectedUser.role} onChange={e => updateUser(selectedUser.id, { role: e.target.value as Role })}>
+                                                <option value={Role.WORKER}>Trabajador</option>
+                                                <option value={Role.SUPERVISOR}>Supervisor</option>
+                                                <option value={Role.ADMIN}>Administrador</option>
+                                           </select>
+                                       </div>
+                                       <div>
+                                           <label className="text-xs font-bold text-slate-500 block mb-1">Departamento</label>
+                                           <select className="w-full border rounded p-2 bg-white" value={selectedUser.departmentId || ''} onChange={e => updateUser(selectedUser.id, { departmentId: e.target.value })}>
+                                                <option value="">Sin Departamento</option>
+                                                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                           </select>
+                                       </div>
+                                        <div>
+                                           <label className="text-xs font-bold text-slate-500 block mb-1">Color Calendario</label>
+                                           <input type="color" className="w-full h-10 border rounded bg-white cursor-pointer" value={selectedUser.calendarColor || '#3b82f6'} onChange={e => updateUser(selectedUser.id, { calendarColor: e.target.value })} />
+                                       </div>
+                                   </div>
+                                   
+                                   <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                       <h4 className="font-bold text-slate-800 mb-3 flex items-center"><Key size={16} className="mr-2"/> Seguridad</h4>
+                                       <div className="flex gap-4">
+                                           <input type="password" placeholder="Nueva contraseña" className="flex-1 border rounded p-2" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                                           <button onClick={handleUpdatePassword} disabled={!newPassword} className="bg-slate-800 text-white px-4 py-2 rounded text-sm disabled:opacity-50">Actualizar</button>
+                                       </div>
+                                   </div>
+                               </div>
+                           )}
+
+                           {activeUserTab === 'absences' && (
+                               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                   <table className="w-full text-sm">
+                                       <thead className="bg-slate-50 text-slate-500 text-left">
+                                           <tr>
+                                               <th className="p-3 pl-4">Tipo</th>
+                                               <th className="p-3">Fechas</th>
+                                               <th className="p-3">Estado</th>
+                                               <th className="p-3 text-right">Acción</th>
+                                           </tr>
+                                       </thead>
+                                       <tbody className="divide-y divide-slate-100">
+                                           {requests.filter(r => r.userId === selectedUser.id).length === 0 ? <tr><td colSpan={4} className="p-4 text-center text-slate-400">Sin registros</td></tr> :
+                                           requests.filter(r => r.userId === selectedUser.id).map(r => (
+                                               <tr key={r.id}>
+                                                   <td className="p-3 pl-4">{absenceTypes.find(t => t.id === r.typeId)?.name}</td>
+                                                   <td className="p-3 text-slate-500">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
+                                                   <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${r.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{r.status}</span></td>
+                                                   <td className="p-3 text-right"><button onClick={() => handleDeleteRequestClick(r.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                               </tr>
+                                           ))}
+                                       </tbody>
+                                   </table>
+                               </div>
+                           )}
+
+                           {activeUserTab === 'overtime' && (
+                               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                   <table className="w-full text-sm">
+                                       <thead className="bg-slate-50 text-slate-500 text-left">
+                                           <tr>
+                                               <th className="p-3 pl-4">Fecha</th>
+                                               <th className="p-3">Horas</th>
+                                               <th className="p-3">Descripción</th>
+                                               <th className="p-3">Estado</th>
+                                               <th className="p-3 text-right">Acción</th>
+                                           </tr>
+                                       </thead>
+                                       <tbody className="divide-y divide-slate-100">
+                                           {overtime.filter(o => o.userId === selectedUser.id).length === 0 ? <tr><td colSpan={5} className="p-4 text-center text-slate-400">Sin registros</td></tr> :
+                                           overtime.filter(o => o.userId === selectedUser.id).map(o => (
+                                               <tr key={o.id}>
+                                                   <td className="p-3 pl-4">{new Date(o.date).toLocaleDateString()}</td>
+                                                   <td className={`p-3 font-bold ${o.hours > 0 ? 'text-green-600' : 'text-slate-600'}`}>{o.hours}h</td>
+                                                   <td className="p-3 text-slate-500 truncate max-w-[150px]">{o.description}</td>
+                                                   <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${o.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{o.status}</span></td>
+                                                   <td className="p-3 text-right"><button onClick={() => handleDeleteOvertimeClick(o.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                               </tr>
+                                           ))}
+                                       </tbody>
+                                   </table>
+                               </div>
+                           )}
+
+                           {activeUserTab === 'adjustments' && (
+                               <div className="space-y-6">
+                                   <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                       <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Calendar className="mr-2 text-primary" size={18}/> Ajuste de Vacaciones</h4>
+                                       <div className="flex gap-4 mb-4">
+                                           <div className="w-24">
+                                                <label className="text-xs font-bold text-slate-500">Días</label>
+                                                <input type="number" className="w-full border rounded p-2" value={adjustDays} onChange={e => setAdjustDays(Number(e.target.value))} />
+                                           </div>
+                                           <div className="flex-1">
+                                                <label className="text-xs font-bold text-slate-500">Motivo</label>
+                                                <input type="text" className="w-full border rounded p-2" value={adjustReasonDays} onChange={e => setAdjustReasonDays(e.target.value)} placeholder="Ej: Error sistema anterior" />
+                                           </div>
+                                       </div>
+                                       <button onClick={handleAdjustDays} disabled={adjustDays === 0} className="bg-primary text-white px-4 py-2 rounded text-sm disabled:opacity-50">Aplicar Ajuste Vacaciones</button>
+                                       
+                                       <div className="mt-4 pt-4 border-t border-slate-100">
+                                           <p className="text-xs font-bold text-slate-500 mb-2">Historial de Ajustes</p>
+                                           <div className="bg-slate-50 rounded p-2 max-h-32 overflow-y-auto text-xs space-y-1">
+                                                {selectedUser.vacationHistory?.map(h => (
+                                                    <div key={h.id} className="flex justify-between text-slate-600">
+                                                        <span>{new Date(h.date).toLocaleDateString()}: {h.days > 0 ? '+' : ''}{h.days} días</span>
+                                                        <span className="opacity-70">{h.reason}</span>
+                                                    </div>
+                                                ))}
+                                                {(!selectedUser.vacationHistory || selectedUser.vacationHistory.length === 0) && <span className="text-slate-400">Sin ajustes previos.</span>}
+                                           </div>
+                                       </div>
+                                   </div>
+
+                                   <div className="bg-white p-4 rounded-xl border border-slate-200">
+                                       <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Clock className="mr-2 text-primary" size={18}/> Ajuste Bolsa de Horas</h4>
+                                       <div className="flex gap-4 mb-4">
+                                           <div className="w-24">
+                                                <label className="text-xs font-bold text-slate-500">Horas</label>
+                                                <input type="number" className="w-full border rounded p-2" value={adjustHours} onChange={e => setAdjustHours(Number(e.target.value))} />
+                                           </div>
+                                           <div className="flex-1">
+                                                <label className="text-xs font-bold text-slate-500">Motivo</label>
+                                                <input type="text" className="w-full border rounded p-2" value={adjustReasonHours} onChange={e => setAdjustReasonHours(e.target.value)} placeholder="Ej: Saldo migrado" />
+                                           </div>
+                                       </div>
+                                       <button onClick={handleAdjustHours} disabled={adjustHours === 0} className="bg-primary text-white px-4 py-2 rounded text-sm disabled:opacity-50">Crear Registro de Ajuste</button>
+                                   </div>
+                               </div>
+                           )}
+                      </div>
+                 </div>
+            </div>
+       )}
+
+       {/* CONFIRMATION MODAL */}
+       {confirmModal && (
           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in duration-200">
-                  <div className="flex items-center text-slate-800 mb-4">
-                      <AlertCircle className="mr-2 text-slate-800" />
+              <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full">
+                  <div className="flex items-center text-red-600 mb-4">
+                      <AlertCircle className="mr-2" />
                       <h3 className="font-bold text-lg">{confirmModal.title}</h3>
                   </div>
                   <p className="text-slate-600 text-sm mb-6">{confirmModal.message}</p>
                   <div className="flex justify-end space-x-3">
                       <button onClick={() => setConfirmModal(null)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium text-sm">Cancelar</button>
-                      <button onClick={confirmModal.onConfirm} className="px-4 py-2 bg-slate-800 text-white hover:bg-slate-700 rounded-lg font-medium text-sm">Confirmar</button>
+                      <button onClick={confirmModal.onConfirm} className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-medium text-sm">Confirmar</button>
                   </div>
               </div>
           </div>
-      )}
-      
-      {/* REDEMPTION DETAIL MODAL (ADMIN VIEW - UPDATED) */}
-      {viewingRedemption && (
-        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col print-area">
-                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 no-print">
-                    <h3 className="font-bold text-slate-800">Detalle de Canje</h3>
-                    <button onClick={() => setViewingRedemption(null)} className="text-slate-400 hover:text-slate-600"><X /></button>
-                </div>
-                
-                <div className="p-8">
-                    <div className="flex justify-between items-center mb-8">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 font-bold text-xl">
-                                HR
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-800">RRHH CHS</h1>
-                                <p className="text-sm text-slate-500">Informe de Consumo de Horas</p>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-sm font-medium text-slate-700 uppercase tracking-wide">Fecha Informe</p>
-                            <p className="text-slate-500">{new Date(viewingRedemption.date).toLocaleDateString()}</p>
-                        </div>
-                    </div>
-
-                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8">
-                        <div className="grid grid-cols-2 gap-6">
-                            <div>
-                                <p className="text-xs text-slate-500 uppercase font-bold mb-1">Solicitante</p>
-                                <p className="text-lg text-slate-800 font-bold">{users.find(u => u.id === viewingRedemption.userId)?.name}</p>
-                                <p className="text-sm text-slate-500">{users.find(u => u.id === viewingRedemption.userId)?.email}</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-xs text-slate-500 uppercase font-bold mb-1">Total Canjeado</p>
-                                <p className="text-3xl font-bold text-slate-800">{Math.abs(viewingRedemption.hours)}h</p>
-                                <p className="text-sm text-purple-600 font-medium mt-1">{getRedemptionLabel(viewingRedemption.redemptionType)}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200 uppercase text-xs tracking-wider">Trazabilidad del Origen de Horas</h4>
-                    <table className="w-full text-sm mb-8">
-                        <thead>
-                            <tr className="text-slate-500 text-xs uppercase text-left bg-slate-50">
-                                <th className="py-3 pl-3 rounded-l-lg">Fecha Origen</th>
-                                <th className="py-3">Motivo</th>
-                                <th className="py-3 text-center">Generadas</th>
-                                <th className="py-3 text-right pr-3 rounded-r-lg">Saldo Restante</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {viewingRedemption.linkedRecordIds?.map(id => {
-                                const original = overtime.find(o => o.id === id);
-                                if (!original) return null;
-                                const remaining = original.hours - original.consumed;
-                                return (
-                                    <tr key={id}>
-                                        <td className="py-3 pl-3 font-medium text-slate-700">{new Date(original.date).toLocaleDateString()}</td>
-                                        <td className="py-3 text-slate-600 truncate max-w-[150px]">{original.description}</td>
-                                        <td className="py-3 text-center font-bold text-emerald-600">+{original.hours}h</td>
-                                        <td className="py-3 text-right pr-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${remaining === 0 ? 'bg-slate-100 text-slate-400' : 'bg-blue-100 text-blue-700'}`}>
-                                                {remaining}h
-                                            </span>
-                                        </td>
-                                    </tr>
-                                )
-                            })}
-                        </tbody>
-                    </table>
-
-                    <div className="border-t-2 border-slate-800 pt-6 flex justify-between items-center mt-auto">
-                        <p className="text-xs text-slate-400">Documento generado por la plataforma RRHH CHS.</p>
-                        <div className="text-right">
-                             <p className="text-xs uppercase font-bold text-slate-500">Total Solicitud</p>
-                             <p className="font-bold text-xl text-slate-800">{Math.abs(viewingRedemption.hours)}h</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end space-x-2 no-print">
-                    <button onClick={handlePrint} className="flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50 shadow-sm">
-                        <Printer size={16} className="mr-2" /> Imprimir
-                    </button>
-                    <button onClick={() => setViewingRedemption(null)} className="px-4 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700">
-                        Cerrar
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
+       )}
     </div>
   );
 };

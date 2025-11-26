@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition, SystemMessage } from '../types';
 import { supabase } from '../services/supabaseClient';
@@ -69,6 +68,7 @@ interface DataContextType {
   updateEmailTemplate: (template: EmailTemplate) => void;
   saveEmailConfig: (config: EmailConfig) => void;
   saveSmtpConfig: (config: SMTPConfig) => void;
+  sendTestEmail: (toEmail: string) => void;
   updateSystemMessage: (msg: SystemMessage) => void;
   
   // Data Management
@@ -293,6 +293,33 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const subject = parseTemplate(template.subject, variables);
       const body = parseTemplate(template.body, variables);
 
+      // PRIORITY 1: SMTP via Vercel API
+      if (smtpConfig.host && smtpConfig.user && smtpConfig.pass) {
+          try {
+              const response = await fetch('/api/send-email', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      to: toUser.email,
+                      subject: subject,
+                      html: body.replace(/\n/g, '<br>'),
+                      config: smtpConfig
+                  })
+              });
+              
+              const result = await response.json();
+              if (response.ok) {
+                  if (eventType === 'WELCOME') notifyUI('Email Enviado', `Bienvenida enviada a ${toUser.email} (SMTP)`, 'success');
+                  return; // Successfully sent via SMTP
+              } else {
+                  console.warn("SMTP send failed, falling back if available:", result.error);
+              }
+          } catch (error) {
+              console.error("SMTP API Error:", error);
+          }
+      }
+
+      // PRIORITY 2: EmailJS Fallback
       if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
           try {
              // @ts-ignore
@@ -328,6 +355,71 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem('smtp_secure', String(config.secure));
       setSmtpConfig(config);
       notifyUI('Configuración SMTP Guardada', 'Los datos del servidor SMTP se han guardado localmente.', 'success');
+  };
+  
+  const sendTestEmail = async (toEmail: string) => {
+      if (!toEmail) {
+          notifyUI('Error', 'Introduce un email para la prueba.', 'error');
+          return;
+      }
+
+      const subject = "Prueba de Conexión RRHH CHS";
+      const message = "Si estás leyendo esto, la integración de email funciona correctamente.";
+      
+      notifyUI('Enviando...', 'Iniciando prueba de envío...', 'info');
+
+      // PRIORITY 1: SMTP
+      if (smtpConfig.host && smtpConfig.user && smtpConfig.pass) {
+          try {
+              const response = await fetch('/api/send-email', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      to: toEmail,
+                      subject: subject,
+                      html: `<p>${message}</p><p>Enviado via SMTP</p>`,
+                      config: smtpConfig
+                  })
+              });
+              
+              const result = await response.json();
+              if (response.ok) {
+                  notifyUI('Éxito SMTP', `Correo enviado a ${toEmail} usando tu servidor SMTP.`, 'success');
+                  return;
+              } else {
+                  notifyUI('Error SMTP', `Falló SMTP: ${result.error}. Intentando EmailJS...`, 'error');
+              }
+          } catch (error: any) {
+              notifyUI('Error API', `Error conectando con API de envío: ${error.message}`, 'error');
+          }
+      }
+      
+      // PRIORITY 2: EmailJS
+      if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
+          try {
+               // @ts-ignore
+               if (window.emailjs) {
+                   // @ts-ignore
+                   await window.emailjs.send(
+                       emailConfig.serviceId,
+                       emailConfig.templateId,
+                       { 
+                           to_email: toEmail, 
+                           subject: subject, 
+                           message: message + " (Vía EmailJS)", 
+                           to_name: "Administrador" 
+                       },
+                       { publicKey: emailConfig.publicKey }
+                   );
+                   notifyUI('Éxito EmailJS', `Correo de prueba enviado a ${toEmail}.`, 'success');
+               }
+          } catch (error: any) {
+               console.error("EmailJS Error:", error);
+               notifyUI('Error Envío', `EmailJS falló: ${error.text || error.message}`, 'error');
+          }
+      } else {
+          notifyUI('Sin Configuración', 'No hay configuración SMTP ni EmailJS válida.', 'error');
+      }
   };
   
   const updateSystemMessage = async (msg: SystemMessage) => {
@@ -720,7 +812,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, systemMessage, isLoading,
       login, logout, updateUser, adjustUserVacation, addUser, deleteUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
-      addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase, updateSystemMessage,
+      addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, sendTestEmail, importDatabase, updateSystemMessage,
       addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType
     }}>
       {children}
