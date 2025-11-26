@@ -30,6 +30,13 @@ export enum ShiftType {
   AFTERNOON = 'AFTERNOON'
 }
 
+export interface SystemMessage {
+  id: string;
+  text: string;
+  active: boolean;
+  color: string; // Tailwind classes
+}
+
 export interface VacationLogEntry {
   id: string;
   date: string;

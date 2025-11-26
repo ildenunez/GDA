@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition } from '../types';
+import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition, SystemMessage } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 // Helper generators
@@ -31,6 +31,7 @@ interface DataContextType {
   notifications: Notification[];
   emailTemplates: EmailTemplate[];
   shifts: Shift[];
+  systemMessage: SystemMessage | null;
   emailConfig: EmailConfig;
   smtpConfig: SMTPConfig;
   isLoading: boolean;
@@ -68,6 +69,7 @@ interface DataContextType {
   updateEmailTemplate: (template: EmailTemplate) => void;
   saveEmailConfig: (config: EmailConfig) => void;
   saveSmtpConfig: (config: SMTPConfig) => void;
+  updateSystemMessage: (msg: SystemMessage) => void;
   
   // Data Management
   importDatabase: (data: any) => void;
@@ -156,6 +158,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [systemMessage, setSystemMessage] = useState<SystemMessage | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Email Configuration
@@ -192,6 +195,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: notifData } = await supabase.from('notifications').select('*');
         const { data: templData } = await supabase.from('email_templates').select('*');
         const { data: shiftsData } = await supabase.from('shifts').select('*');
+        const { data: msgData } = await supabase.from('system_messages').select('*').eq('id', 'global_msg').single();
 
         if ((!usersData || usersData.length === 0) && (!deptsData || deptsData.length === 0)) {
             console.log("Database empty. Seeding initial data...");
@@ -214,6 +218,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (otData) setOvertime(otData);
         if (notifData) setNotifications(notifData);
         if (shiftsData) setShifts(shiftsData);
+        if (msgData) setSystemMessage(msgData);
         
         if (!templData || templData.length === 0) {
              await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
@@ -243,6 +248,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await supabase.from('absence_types').insert(SEED_ABSENCE_TYPES);
           await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
           await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
+          // Initial System Message
+          await supabase.from('system_messages').insert({
+              id: 'global_msg', 
+              text: 'Bienvenido a RRHH CHS', 
+              active: true, 
+              color: 'bg-blue-100 text-blue-800 border-blue-200'
+          });
           fetchData();
       } catch (e) {
           console.error("Error seeding database:", e);
@@ -261,6 +273,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supabase.channel('public:notifications').on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => fetchData()).subscribe(),
         supabase.channel('public:email_templates').on('postgres_changes', { event: '*', schema: 'public', table: 'email_templates' }, () => fetchData()).subscribe(),
         supabase.channel('public:shifts').on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, () => fetchData()).subscribe(),
+        supabase.channel('public:system_messages').on('postgres_changes', { event: '*', schema: 'public', table: 'system_messages' }, () => fetchData()).subscribe(),
     ];
     return () => { channels.forEach(ch => supabase.removeChannel(ch)); };
   }, []);
@@ -315,6 +328,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem('smtp_secure', String(config.secure));
       setSmtpConfig(config);
       notifyUI('Configuración SMTP Guardada', 'Los datos del servidor SMTP se han guardado localmente.', 'success');
+  };
+  
+  const updateSystemMessage = async (msg: SystemMessage) => {
+      setSystemMessage(msg);
+      await supabase.from('system_messages').upsert(msg);
+      notifyUI('Mensaje Actualizado', 'El mensaje global se ha actualizado.', 'success');
   };
 
   const sendNotification = async (userId: string, title: string, message: string, type: NotificationType) => {
@@ -698,10 +717,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <DataContext.Provider value={{
-      currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, isLoading,
+      currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, systemMessage, isLoading,
       login, logout, updateUser, adjustUserVacation, addUser, deleteUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
-      addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase,
+      addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, importDatabase, updateSystemMessage,
       addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType
     }}>
       {children}

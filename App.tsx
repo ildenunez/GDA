@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { DataProvider, useData } from './context/DataContext';
-import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, ChevronRight, UserCircle, CalendarDays, CheckCheck } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, ChevronRight, UserCircle, CalendarDays, CheckCheck, Megaphone } from 'lucide-react';
 import { Role, RequestStatus } from './types';
 
 // Pages
@@ -35,7 +35,7 @@ const SidebarItem = ({ to, icon: Icon, label, active, onClick }: any) => (
 );
 
 const Layout = ({ children }: { children?: React.ReactNode }) => {
-  const { currentUser, logout, notifications, markNotificationRead, markAllNotificationsRead, requests, departments, overtime } = useData();
+  const { currentUser, logout, notifications, markNotificationRead, markAllNotificationsRead, requests, departments, overtime, systemMessage } = useData();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -131,6 +131,21 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
               <Menu size={24} />
             </button>
             <div className="flex-1"></div>
+            
+            {/* SYSTEM MESSAGE (BANNER) - SCROLLING */}
+            {systemMessage && systemMessage.active && (
+                <div className={`hidden sm:flex items-center px-3 py-1.5 rounded-lg mr-4 shadow-sm border overflow-hidden w-64 md:w-96 relative group ${systemMessage.color}`}>
+                    <div className="relative z-10 bg-inherit pr-2">
+                         <Megaphone size={14} className="flex-shrink-0" />
+                    </div>
+                    <div className="flex-1 overflow-hidden relative h-5 flex items-center">
+                         <span className="whitespace-nowrap animate-marquee absolute text-xs font-semibold">
+                             {systemMessage.text} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {systemMessage.text}
+                         </span>
+                    </div>
+                </div>
+            )}
+            
             <div className="relative">
               <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-2 rounded-full text-slate-500 hover:bg-slate-100 relative transition-colors">
                 <Bell size={20} />
@@ -185,6 +200,20 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
               )}
             </div>
           </div>
+          
+          {/* MOBILE ONLY: SYSTEM MESSAGE BANNER (BELOW HEADER) - SCROLLING */}
+          {systemMessage && systemMessage.active && (
+             <div className={`sm:hidden border-t flex items-center ${systemMessage.color} overflow-hidden relative h-8`}>
+                 <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center px-3 bg-inherit">
+                     <Megaphone size={14} />
+                 </div>
+                 <div className="w-full overflow-hidden relative h-full flex items-center pl-10">
+                     <span className="whitespace-nowrap animate-marquee text-xs font-semibold inline-block">
+                         {systemMessage.text} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {systemMessage.text}
+                     </span>
+                 </div>
+             </div>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
