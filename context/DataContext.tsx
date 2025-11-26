@@ -138,13 +138,15 @@ const SEED_SHIFT_TYPES: ShiftTypeDefinition[] = [
 
 const SEED_EMAIL_TEMPLATES: EmailTemplate[] = [
     { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una nueva solicitud de ausencia.', recipients: [Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia (Aviso)', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una nueva solicitud de ausencia.', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et3', eventType: 'REQUEST_APPROVED', name: 'Ausencia Aprobada', subject: 'Solicitud Aprobada', body: 'Hola {{name}}, tu solicitud ha sido APROBADA.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et4', eventType: 'REQUEST_REJECTED', name: 'Ausencia Rechazada', subject: 'Solicitud Rechazada', body: 'Hola {{name}}, tu solicitud ha sido RECHAZADA.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et5', eventType: 'OVERTIME_CREATED', name: 'Registro Horas (Aviso)', subject: 'Registro Horas: {{name}}', body: '{{name}} ha registrado {{hours}} horas extras. Motivo: {{description}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et6', eventType: 'REDEMPTION_CREATED', name: 'Consumo Horas (Aviso)', subject: 'Solicitud Canje: {{name}}', body: '{{name}} solicita canjear {{hours}} horas. Tipo: {{type}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et7', eventType: 'OVERTIME_APPROVED', name: 'Horas/Canje Aprobado', subject: 'Registro Aprobado', body: 'Tu registro de {{hours}}h ha sido APROBADO.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et8', eventType: 'OVERTIME_REJECTED', name: 'Horas/Canje Rechazado', subject: 'Registro Rechazado', body: 'Tu registro de {{hours}}h ha sido RECHAZADO.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et9', eventType: 'REQUEST_RECEIVED', name: 'Confirmación Solicitud', subject: 'Solicitud Recibida', body: 'Hola {{name}}, hemos recibido tu solicitud. Queda pendiente de aprobación.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et10', eventType: 'REQUEST_CANCELLED', name: 'Solicitud Cancelada', subject: 'Solicitud Cancelada', body: 'Hola {{name}}, has eliminado correctamente tu solicitud.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
 ];
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -224,37 +226,49 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
              setEmailTemplates(SEED_EMAIL_TEMPLATES);
         } else {
-             // AUTO-PATCH: Check for templates with missing recipients (common migration issue)
-             const templatesToPatch = templData.filter(t => !t.recipients || t.recipients.length === 0);
-             if (templatesToPatch.length > 0) {
-                 console.log("[AUTO-PATCH] Fixing email templates with missing recipients...");
-                 const updates = templatesToPatch.map(t => {
-                     const seed = SEED_EMAIL_TEMPLATES.find(s => s.eventType === t.eventType);
-                     if (seed) {
-                         return { ...t, recipients: seed.recipients };
+             // AUTO-PATCH: Check for templates with missing recipients OR new templates
+             const updates: Partial<EmailTemplate>[] = [];
+             const inserts: EmailTemplate[] = [];
+
+             // 1. Check existing templates for missing roles (e.g. Admin)
+             for (const t of templData) {
+                 const seed = SEED_EMAIL_TEMPLATES.find(s => s.eventType === t.eventType);
+                 if (seed) {
+                     // If seed has more recipients than current DB, update it
+                     const missingRoles = seed.recipients.filter(r => !t.recipients?.includes(r));
+                     if (missingRoles.length > 0 || !t.recipients) {
+                         const newRecipients = Array.from(new Set([...(t.recipients || []), ...seed.recipients]));
+                         updates.push({ ...t, recipients: newRecipients });
                      }
-                     return t;
-                 });
-                 
+                 }
+             }
+
+             // 2. Check for completely missing templates (e.g. REQUEST_RECEIVED)
+             const existingTypes = templData.map(t => t.eventType);
+             const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
+             if (missingTemplates.length > 0) {
+                 inserts.push(...missingTemplates);
+             }
+
+             // Apply patches
+             if (updates.length > 0) {
+                 console.log(`[AUTO-PATCH] Updating ${updates.length} templates with missing roles...`);
                  for (const u of updates) {
                      await supabase.from('email_templates').update({ recipients: u.recipients }).eq('id', u.id);
                  }
-                 
-                 // Merge updates into state
-                 const updatedTemplates = templData.map(t => {
-                     const patched = updates.find(u => u.id === t.id);
-                     return patched || t;
-                 });
-                 setEmailTemplates(updatedTemplates);
+             }
+             
+             if (inserts.length > 0) {
+                 console.log(`[AUTO-PATCH] Inserting ${inserts.length} new templates...`);
+                 await supabase.from('email_templates').insert(inserts);
+             }
+
+             if (updates.length > 0 || inserts.length > 0) {
+                 // Refresh templates after patch
+                 const { data: refreshedTemplates } = await supabase.from('email_templates').select('*');
+                 if (refreshedTemplates) setEmailTemplates(refreshedTemplates);
              } else {
-                 const existingTypes = templData.map(t => t.eventType);
-                 const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
-                 if (missingTemplates.length > 0) {
-                     await supabase.from('email_templates').insert(missingTemplates);
-                     setEmailTemplates([...templData, ...missingTemplates]);
-                 } else {
-                     setEmailTemplates(templData);
-                 }
+                 setEmailTemplates(templData);
              }
         }
 
@@ -572,6 +586,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await supabase.from('requests').insert(newReq);
     const user = users.find(u => u.id === req.userId);
     if (user) {
+        // Send confirmation email to self (even if Admin)
+        sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name });
+
         const adminUsers = users.filter(u => u.role === Role.ADMIN);
         const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
         const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
@@ -601,11 +618,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deleteRequest = async (id: string) => {
       console.log(`[DELETE REQUEST] Deleting ID: ${id}`);
+      const req = requests.find(r => r.id === id);
       const originalRequests = [...requests];
       setRequests(prev => prev.filter(r => r.id !== id));
       try {
           const { error } = await supabase.from('requests').delete().eq('id', id);
           if (error) throw error;
+          
+          // Send cancellation email if user still exists
+          if (req) {
+              const user = users.find(u => u.id === req.userId);
+              if (user) sendEmailWithTemplate('REQUEST_CANCELLED', user, { name: user.name });
+          }
+
           notifyUI('Eliminado', 'Solicitud eliminada. Los días se han restaurado.', 'success');
           await fetchData();
       } catch (error: any) {
@@ -622,6 +647,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const user = users.find(u => u.id === rec.userId);
      if (!isAutoApproved) {
         if (user) {
+            sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name }); // Reuse generic received template
             sendNotification(user.id, 'Registro de Horas', `Has registrado ${rec.hours} horas extras.`, NotificationType.INFO);
             const adminUsers = users.filter(u => u.role === Role.ADMIN);
             const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
@@ -706,6 +732,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
           const { error } = await supabase.from('overtime').delete().eq('id', id);
           if (error) throw error;
+          
+          if (rec) {
+              const user = users.find(u => u.id === rec.userId);
+              if (user) sendEmailWithTemplate('REQUEST_CANCELLED', user, { name: user.name });
+          }
+
           await fetchData();
       } catch (error: any) {
           setOvertime(originalOvertime);
@@ -730,6 +762,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setOvertime(prev => [newRec, ...prev]);
       await supabase.from('overtime').insert(newRec);
       sendNotification(currentUser.id, 'Canje Solicitado', `Solicitud de canje de ${hours}h enviada correctamente.`, NotificationType.INFO);
+      
+      // Send confirmation to self
+      sendEmailWithTemplate('REQUEST_RECEIVED', currentUser, { name: currentUser.name });
+
       const adminUsers = users.filter(u => u.role === Role.ADMIN);
       const supervisorIds = currentUser.departmentId ? departments.find(d => d.id === currentUser.departmentId)?.supervisorIds || [] : [];
       const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
