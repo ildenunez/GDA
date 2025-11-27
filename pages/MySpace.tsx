@@ -485,7 +485,9 @@ const MySpace = () => {
       {/* 4. Detail Redemption Modal - A4 PRINT OPTIMIZED */}
       {selectedRedemption && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            {/* Added 'print-area' class for isolation */}
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col print-area">
+                {/* Header with Close Button - Hidden on Print */}
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 no-print">
                     <h3 className="font-bold text-slate-800">Detalle de Canje</h3>
                     <button onClick={() => setSelectedRedemption(null)} className="text-slate-400 hover:text-slate-600"><X /></button>

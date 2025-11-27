@@ -55,122 +55,107 @@
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-      /* Print Styles A4 Optimized */
-      @page {
-        size: A4;
-        margin: 1.5cm;
-      }
-
+      /* --- PRINT STYLES (A4 REPORT FORMAT) --- */
       @media print {
-        /* Hide entire app by default */
-        body > * {
+        @page {
+          size: A4;
+          margin: 1.5cm;
+        }
+
+        /* 1. Reset Global Visibility */
+        body {
+          background-color: white !important;
+          color: black !important;
+        }
+
+        body * {
+          visibility: hidden; /* Hide everything by default */
+        }
+
+        /* 2. Isolate Print Area */
+        .print-area, .print-area * {
+          visibility: visible !important; /* Show only the print area and its children */
+        }
+
+        /* 3. Position Print Area at Top of Page */
+        .print-area {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: white !important;
+          
+          /* Remove Modal Styling */
+          box-shadow: none !important;
+          border: none !important;
+          border-radius: 0 !important;
+          max-width: none !important;
+          transform: none !important;
+          overflow: visible !important;
+        }
+
+        /* 4. Hide UI Elements explicitly */
+        .no-print {
           display: none !important;
         }
 
-        /* Only show the print container */
-        body > #root {
-          display: block !important;
-        }
-
-        #root > * {
-           display: none !important;
-        }
-
-        /* ISOLATION STRATEGY: Look for the specific print modal container */
-        .print-area {
-           display: block !important;
-           position: absolute !important;
-           left: 0 !important;
-           top: 0 !important;
-           width: 100% !important;
-           height: auto !important;
-           margin: 0 !important;
-           padding: 0 !important;
-           background: white !important;
-           box-shadow: none !important;
-           border: none !important;
-           border-radius: 0 !important;
-           overflow: visible !important;
-           z-index: 999999 !important;
-        }
-
-        /* Ensure all children of print area are visible */
-        .print-area * {
-           visibility: visible !important;
-        }
-        
-        /* Layout overrides for Report Style */
-        .print-area .max-w-lg {
-            max-width: none !important; /* Allow full width */
-            width: 100% !important;
-        }
-        
-        .print-area .overflow-hidden {
-            overflow: visible !important; /* Show full content */
-        }
-        
-        .print-area .max-h-\[90vh\] {
-            max-height: none !important;
-        }
-
-        /* Text readability overrides */
+        /* 5. Formatting for Report Look */
+        /* Expand Tables */
         .print-area table {
-            width: 100% !important;
-            table-layout: fixed;
+          width: 100% !important;
+          border-collapse: collapse !important;
+          table-layout: fixed !important;
         }
-        
-        .print-area td, .print-area th {
-            white-space: normal !important; /* Prevent text cutting */
-            word-wrap: break-word !important;
-            overflow: visible !important;
-            text-overflow: clip !important;
+
+        .print-area th {
+          background-color: #f3f4f6 !important;
+          color: #000 !important;
+          font-weight: bold !important;
+          border-bottom: 2px solid #000 !important;
+          padding: 8px !important;
         }
-        
-        /* Specifically target truncated columns */
+
+        .print-area td {
+          border-bottom: 1px solid #ddd !important;
+          padding: 8px !important;
+          color: #000 !important;
+        }
+
+        /* Allow Text Wrapping */
         .print-area .truncate {
-            white-space: normal !important;
-            overflow: visible !important;
-            text-overflow: clip !important;
-            max-width: none !important;
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
         }
 
-        /* Hide UI elements inside the print area that shouldn't be printed */
-        .no-print { 
-          display: none !important; 
+        /* Hide Scrollbars */
+        .print-area .overflow-y-auto {
+          overflow: visible !important;
+          max-height: none !important;
         }
         
-        /* Improve typography for print */
-        body {
-          font-size: 10pt;
-          color: black;
-          line-height: 1.4;
-          background: white !important;
-        }
-
-        /* Table formatting */
-        th { 
-            border-bottom: 2px solid #000 !important; 
-            color: #000 !important;
-            font-weight: bold !important;
-        }
-        td { 
-            border-bottom: 1px solid #ddd !important; 
+        /* Ensure Background Colors Print (if browser setting allows) */
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
       }
     </style>
-<script type="importmap">
+  <script type="importmap">
 {
   "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.86.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
     "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
     "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.86.0",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
     "nodemailer": "https://aistudiocdn.com/nodemailer@^7.0.11"
   }
 }
