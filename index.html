@@ -58,34 +58,80 @@
       /* Print Styles A4 Optimized */
       @page {
         size: A4;
-        margin: 0;
+        margin: 1.5cm;
       }
 
       @media print {
-        /* Hide everything by default using visibility to avoid display issues with parents */
-        body {
-          visibility: hidden;
-          background: white;
+        /* Hide entire app by default */
+        body > * {
+          display: none !important;
         }
 
-        /* Make the modal container visible and positioned correctly */
+        /* Only show the print container */
+        body > #root {
+          display: block !important;
+        }
+
+        #root > * {
+           display: none !important;
+        }
+
+        /* ISOLATION STRATEGY: Look for the specific print modal container */
         .print-area {
-          visibility: visible !important;
-          position: absolute !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100% !important;
-          height: auto !important;
-          margin: 0 !important;
-          padding: 2cm !important;
-          background: white !important;
-          box-shadow: none !important;
-          border: none !important;
-          z-index: 999999 !important;
+           display: block !important;
+           position: absolute !important;
+           left: 0 !important;
+           top: 0 !important;
+           width: 100% !important;
+           height: auto !important;
+           margin: 0 !important;
+           padding: 0 !important;
+           background: white !important;
+           box-shadow: none !important;
+           border: none !important;
+           border-radius: 0 !important;
+           overflow: visible !important;
+           z-index: 999999 !important;
         }
 
+        /* Ensure all children of print area are visible */
         .print-area * {
-          visibility: visible !important;
+           visibility: visible !important;
+        }
+        
+        /* Layout overrides for Report Style */
+        .print-area .max-w-lg {
+            max-width: none !important; /* Allow full width */
+            width: 100% !important;
+        }
+        
+        .print-area .overflow-hidden {
+            overflow: visible !important; /* Show full content */
+        }
+        
+        .print-area .max-h-\[90vh\] {
+            max-height: none !important;
+        }
+
+        /* Text readability overrides */
+        .print-area table {
+            width: 100% !important;
+            table-layout: fixed;
+        }
+        
+        .print-area td, .print-area th {
+            white-space: normal !important; /* Prevent text cutting */
+            word-wrap: break-word !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
+        
+        /* Specifically target truncated columns */
+        .print-area .truncate {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            max-width: none !important;
         }
 
         /* Hide UI elements inside the print area that shouldn't be printed */
@@ -95,29 +141,36 @@
         
         /* Improve typography for print */
         body {
-          font-size: 11pt;
+          font-size: 10pt;
           color: black;
-          line-height: 1.3;
+          line-height: 1.4;
+          background: white !important;
         }
 
         /* Table formatting */
-        table { width: 100% !important; border-collapse: collapse !important; }
-        th, td { border-bottom: 1px solid #ddd !important; page-break-inside: avoid; }
+        th { 
+            border-bottom: 2px solid #000 !important; 
+            color: #000 !important;
+            font-weight: bold !important;
+        }
+        td { 
+            border-bottom: 1px solid #ddd !important; 
+        }
       }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.84.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.4",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.86.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
     "nodemailer": "https://aistudiocdn.com/nodemailer@^7.0.11"
   }
 }

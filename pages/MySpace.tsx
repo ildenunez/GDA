@@ -95,8 +95,7 @@ const MySpace = () => {
   };
 
   const handlePrint = () => {
-      // Small delay to ensure render is complete before printing (though usually React is fast enough)
-      setTimeout(() => window.print(), 100);
+      window.print();
   };
 
   // Helper for translating redemption type
@@ -486,7 +485,7 @@ const MySpace = () => {
       {/* 4. Detail Redemption Modal - A4 PRINT OPTIMIZED */}
       {selectedRedemption && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col print-area">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col print-area">
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 no-print">
                     <h3 className="font-bold text-slate-800">Detalle de Canje</h3>
                     <button onClick={() => setSelectedRedemption(null)} className="text-slate-400 hover:text-slate-600"><X /></button>
@@ -509,7 +508,7 @@ const MySpace = () => {
                         </div>
                     </div>
 
-                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8">
+                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8 print:bg-white print:border-none print:p-0">
                         <div className="grid grid-cols-2 gap-6">
                             <div>
                                 <p className="text-xs text-slate-500 uppercase font-bold mb-1">Solicitante</p>
@@ -525,13 +524,13 @@ const MySpace = () => {
                     </div>
 
                     <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-200 uppercase text-xs tracking-wider">Trazabilidad del Origen de Horas</h4>
-                    <table className="w-full text-sm mb-8">
+                    <table className="w-full text-sm mb-8 print:w-full">
                         <thead>
-                            <tr className="text-slate-500 text-xs uppercase text-left bg-slate-50">
-                                <th className="py-3 pl-3 rounded-l-lg">Fecha Origen</th>
+                            <tr className="text-slate-500 text-xs uppercase text-left bg-slate-50 print:bg-white print:border-b-2 print:border-black">
+                                <th className="py-3 pl-3 rounded-l-lg print:rounded-none">Fecha Origen</th>
                                 <th className="py-3">Motivo</th>
                                 <th className="py-3 text-center">Generadas</th>
-                                <th className="py-3 text-right pr-3 rounded-r-lg">Saldo Restante</th>
+                                <th className="py-3 text-right pr-3 rounded-r-lg print:rounded-none">Saldo Restante</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -542,10 +541,10 @@ const MySpace = () => {
                                 return (
                                     <tr key={id}>
                                         <td className="py-3 pl-3 font-medium text-slate-700">{new Date(original.date).toLocaleDateString()}</td>
-                                        <td className="py-3 text-slate-600 truncate max-w-[150px]">{original.description}</td>
-                                        <td className="py-3 text-center font-bold text-emerald-600">+{original.hours}h</td>
+                                        <td className="py-3 text-slate-600 print:whitespace-normal print:overflow-visible print:text-black">{original.description}</td>
+                                        <td className="py-3 text-center font-bold text-emerald-600 print:text-black">+{original.hours}h</td>
                                         <td className="py-3 text-right pr-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${remaining === 0 ? 'bg-slate-100 text-slate-400' : 'bg-blue-100 text-blue-700'}`}>
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${remaining === 0 ? 'bg-slate-100 text-slate-400 print:bg-transparent print:text-black' : 'bg-blue-100 text-blue-700 print:bg-transparent print:text-black'}`}>
                                                 {remaining}h
                                             </span>
                                         </td>
