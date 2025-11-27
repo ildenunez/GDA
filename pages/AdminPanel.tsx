@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock, FileText, LayoutList, Megaphone, Send } from 'lucide-react';
@@ -7,7 +8,7 @@ const AdminPanel = () => {
   const { 
       absenceTypes, createAbsenceType, deleteAbsenceType, updateAbsenceType,
       departments, addDepartment, updateDepartment, deleteDepartment,
-      users, updateUser, adjustUserVacation, addUser, deleteUser, requests, deleteRequest, overtime, addOvertime, deleteOvertime,
+      users, updateUser, adjustUserVacation, addUser, deleteUser, requests, addRequest, deleteRequest, overtime, addOvertime, deleteOvertime, requestRedemption,
       notifications, importDatabase, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig, sendTestEmail, systemMessage, updateSystemMessage,
       shifts, addShift, deleteShift, shiftTypes, createShiftType, updateShiftType, deleteShiftType
   } = useData();
@@ -72,6 +73,15 @@ const AdminPanel = () => {
   // Password State
   const [newPassword, setNewPassword] = useState('');
   
+  // --- ADMIN CREATION MODALS STATE ---
+  const [showAdminAbsenceModal, setShowAdminAbsenceModal] = useState(false);
+  const [showAdminOvertimeModal, setShowAdminOvertimeModal] = useState(false);
+  const [showAdminRedeemModal, setShowAdminRedeemModal] = useState(false);
+  
+  const [adminAbsenceForm, setAdminAbsenceForm] = useState({ typeId: '', startDate: '', endDate: '', comment: '' });
+  const [adminOvertimeForm, setAdminOvertimeForm] = useState({ date: '', hours: 0, description: '' });
+  const [adminRedeemForm, setAdminRedeemForm] = useState({ hours: 0, type: RedemptionType.TIME_OFF, selectedIds: [] as string[] });
+
   // --- CONFIRMATION MODAL STATE ---
   const [confirmModal, setConfirmModal] = useState<{
       show: boolean, 
@@ -81,7 +91,6 @@ const AdminPanel = () => {
   } | null>(null);
 
   // --- HANDLERS: CONFIG ---
-  // ... (keeping existing handlers - no changes needed to logic)
   const handleCreateType = (e: React.FormEvent) => {
     e.preventDefault();
     const typePayload: any = {
@@ -348,6 +357,52 @@ const AdminPanel = () => {
           alert('Horas ajustadas correctamente.');
       }
   };
+  
+  // --- ADMIN ACTIONS HANDLERS ---
+  const handleAdminCreateAbsence = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (selectedUser) {
+          addRequest({
+              userId: selectedUser.id,
+              typeId: adminAbsenceForm.typeId,
+              startDate: adminAbsenceForm.startDate,
+              endDate: adminAbsenceForm.endDate,
+              comment: adminAbsenceForm.comment + " (Creado por Admin)"
+          }, RequestStatus.APPROVED);
+          setShowAdminAbsenceModal(false);
+          setAdminAbsenceForm({ typeId: '', startDate: '', endDate: '', comment: '' });
+      }
+  };
+
+  const handleAdminCreateOvertime = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (selectedUser) {
+          addOvertime({
+              userId: selectedUser.id,
+              date: adminOvertimeForm.date,
+              hours: Number(adminOvertimeForm.hours),
+              description: adminOvertimeForm.description + " (Creado por Admin)",
+              status: RequestStatus.APPROVED
+          });
+          setShowAdminOvertimeModal(false);
+          setAdminOvertimeForm({ date: '', hours: 0, description: '' });
+      }
+  };
+
+  const handleAdminRedeemOvertime = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (selectedUser) {
+          requestRedemption(
+              Number(adminRedeemForm.hours), 
+              adminRedeemForm.selectedIds, 
+              adminRedeemForm.type, 
+              selectedUser.id, 
+              RequestStatus.APPROVED
+          );
+          setShowAdminRedeemModal(false);
+          setAdminRedeemForm({ hours: 0, type: RedemptionType.TIME_OFF, selectedIds: [] });
+      }
+  };
 
   // Helper for redemption label
   const getRedemptionLabel = (type?: RedemptionType) => {
@@ -450,7 +505,6 @@ const AdminPanel = () => {
   return (
     <div className="space-y-6">
        {/* Header & Tabs */}
-       {/* ... (Same as before) ... */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                 <h2 className="text-2xl font-bold text-slate-800">Administración</h2>
@@ -467,7 +521,6 @@ const AdminPanel = () => {
        {/* Config Tab Content */}
        {activeTab === 'config' && (
            <div className="space-y-8">
-               {/* ... (Existing config content) ... */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                   <h3 className="font-bold text-slate-800 mb-4 flex items-center">
                       <Database className="mr-2 text-slate-500" size={20} /> Copia de Seguridad y Restauración
@@ -485,7 +538,6 @@ const AdminPanel = () => {
                   </div>
                </div>
                
-               {/* Absence, Depts, Shifts config ... */}
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {/* ABSENCE TYPES COMPONENT */}
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -577,7 +629,6 @@ const AdminPanel = () => {
                    <h3 className="font-bold text-slate-800 mb-4 flex items-center">
                        <Clock className="mr-2 text-indigo-500" size={20} /> Tipos de Turno
                    </h3>
-                   {/* ... (Existing Shift Type UI) ... */}
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                        <div className="space-y-3">
                            {shiftTypes.map(type => (
@@ -600,7 +651,6 @@ const AdminPanel = () => {
                        </div>
                        
                        <form onSubmit={handleCreateShiftType} className="space-y-4 bg-slate-50 p-4 rounded-xl">
-                            {/* ... (Shift Type Form) ... */}
                             <h4 className="text-sm font-semibold text-slate-700">{editingShiftType ? 'Editar Turno' : 'Crear Nuevo Turno'}</h4>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="col-span-2">
@@ -644,7 +694,6 @@ const AdminPanel = () => {
        {activeTab === 'users' && (
            <div className="space-y-6">
                 <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    {/* ... (Search & Create User Button) ... */}
                     <div className="relative w-64">
                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
                          <input type="text" placeholder="Buscar usuario..." className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -692,7 +741,7 @@ const AdminPanel = () => {
            </div>
        )}
 
-       {/* Shifts Tab & Comms Tab content ... (unchanged) */}
+       {/* Shifts Tab content */}
        {activeTab === 'shifts' && (
            <div className="space-y-6">
                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
@@ -741,7 +790,6 @@ const AdminPanel = () => {
        
        {activeTab === 'comms' && (
            <div className="space-y-8">
-               {/* Comms content... */}
                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                     <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Megaphone className="mr-2 text-rose-500" size={20} /> Mensaje Global</h3>
                     <form onSubmit={handleUpdateSystemMessage} className="space-y-4">
@@ -771,7 +819,6 @@ const AdminPanel = () => {
                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Server className="mr-2 text-blue-600" size={20} /> Configuración SMTP</h3>
                         <form onSubmit={handleSaveSmtpConfig} className="space-y-3">
-                            {/* ... SMTP inputs ... */}
                             <div><label className="text-xs font-bold text-slate-500">Host</label><input className="w-full border rounded p-2 text-sm" value={smtpConfigForm.host} onChange={e => setSmtpConfigForm({...smtpConfigForm, host: e.target.value})} /></div>
                             <div className="flex gap-2">
                                 <div className="flex-1"><label className="text-xs font-bold text-slate-500">Port</label><input className="w-full border rounded p-2 text-sm" value={smtpConfigForm.port} onChange={e => setSmtpConfigForm({...smtpConfigForm, port: e.target.value})} /></div>
@@ -839,7 +886,6 @@ const AdminPanel = () => {
                       <div className="p-6 overflow-y-auto bg-slate-50/50 flex-1">
                            {activeUserTab === 'info' && (
                                <div className="space-y-6">
-                                   {/* ... User Info Fields ... */}
                                    <div className="grid grid-cols-2 gap-6">
                                        <div><label className="text-xs font-bold text-slate-500">Nombre</label><input className="w-full border rounded p-2 bg-white" value={selectedUser.name} onChange={e => updateUser(selectedUser.id, { name: e.target.value })} /></div>
                                        <div><label className="text-xs font-bold text-slate-500">Email</label><input className="w-full border rounded p-2 bg-white" value={selectedUser.email} onChange={e => updateUser(selectedUser.id, { email: e.target.value })} /></div>
@@ -872,54 +918,70 @@ const AdminPanel = () => {
                            )}
 
                            {activeUserTab === 'absences' && (
-                               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                   <table className="w-full text-sm">
-                                       <thead className="bg-slate-50 text-slate-500 text-left">
-                                           <tr><th className="p-3 pl-4">Tipo</th><th className="p-3">Fechas</th><th className="p-3">Estado</th><th className="p-3 text-right">Acción</th></tr>
-                                       </thead>
-                                       <tbody className="divide-y divide-slate-100">
-                                           {requests.filter(r => r.userId === selectedUser.id).map(r => (
-                                               <tr key={r.id}>
-                                                   <td className="p-3 pl-4">{absenceTypes.find(t => t.id === r.typeId)?.name}</td>
-                                                   <td className="p-3 text-slate-500">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
-                                                   <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${r.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{r.status}</span></td>
-                                                   <td className="p-3 text-right"><button onClick={() => handleDeleteRequestClick(r.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
-                                               </tr>
-                                           ))}
-                                       </tbody>
-                                   </table>
+                               <div className="space-y-4">
+                                   <div className="flex justify-end">
+                                       <button onClick={() => setShowAdminAbsenceModal(true)} className="flex items-center px-3 py-1.5 bg-primary text-white text-xs rounded-lg hover:bg-primary/90 transition-colors">
+                                           <Plus size={14} className="mr-1" /> Nueva Ausencia
+                                       </button>
+                                   </div>
+                                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                       <table className="w-full text-sm">
+                                           <thead className="bg-slate-50 text-slate-500 text-left">
+                                               <tr><th className="p-3 pl-4">Tipo</th><th className="p-3">Fechas</th><th className="p-3">Estado</th><th className="p-3 text-right">Acción</th></tr>
+                                           </thead>
+                                           <tbody className="divide-y divide-slate-100">
+                                               {requests.filter(r => r.userId === selectedUser.id).map(r => (
+                                                   <tr key={r.id}>
+                                                       <td className="p-3 pl-4">{absenceTypes.find(t => t.id === r.typeId)?.name}</td>
+                                                       <td className="p-3 text-slate-500">{new Date(r.startDate).toLocaleDateString()} - {new Date(r.endDate).toLocaleDateString()}</td>
+                                                       <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${r.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{r.status}</span></td>
+                                                       <td className="p-3 text-right"><button onClick={() => handleDeleteRequestClick(r.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                                   </tr>
+                                               ))}
+                                           </tbody>
+                                       </table>
+                                   </div>
                                </div>
                            )}
 
                            {activeUserTab === 'overtime' && (
-                               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                   <table className="w-full text-sm">
-                                       <thead className="bg-slate-50 text-slate-500 text-left">
-                                           <tr><th className="p-3 pl-4">Fecha</th><th className="p-3">Horas</th><th className="p-3">Descripción</th><th className="p-3">Estado</th><th className="p-3 text-right">Acción</th></tr>
-                                       </thead>
-                                       <tbody className="divide-y divide-slate-100">
-                                           {overtime.filter(o => o.userId === selectedUser.id).map(o => (
-                                               <tr key={o.id}>
-                                                   <td className="p-3 pl-4">{new Date(o.date).toLocaleDateString()}</td>
-                                                   <td className={`p-3 font-bold ${o.hours > 0 ? 'text-green-600' : 'text-slate-600'}`}>{o.hours}h</td>
-                                                   <td className="p-3 text-slate-500 truncate max-w-[150px]">{o.description}</td>
-                                                   <td className="p-3">
-                                                       <span className={`px-2 py-0.5 rounded text-xs ${o.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{o.status}</span>
-                                                       {o.hours < 0 && o.status === RequestStatus.APPROVED && (
-                                                            <button onClick={() => setSelectedRedemption(o)} className="ml-2 text-xs text-purple-600 underline"><FileText size={12}/></button>
-                                                       )}
-                                                   </td>
-                                                   <td className="p-3 text-right"><button onClick={() => handleDeleteOvertimeClick(o.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
-                                               </tr>
-                                           ))}
-                                       </tbody>
-                                   </table>
+                               <div className="space-y-4">
+                                   <div className="flex justify-end space-x-2">
+                                       <button onClick={() => setShowAdminOvertimeModal(true)} className="flex items-center px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-xs rounded-lg hover:bg-slate-50 transition-colors">
+                                           <Plus size={14} className="mr-1" /> Registrar Horas
+                                       </button>
+                                       <button onClick={() => setShowAdminRedeemModal(true)} className="flex items-center px-3 py-1.5 bg-slate-800 text-white text-xs rounded-lg hover:bg-slate-700 transition-colors">
+                                           Canjear Horas
+                                       </button>
+                                   </div>
+                                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                       <table className="w-full text-sm">
+                                           <thead className="bg-slate-50 text-slate-500 text-left">
+                                               <tr><th className="p-3 pl-4">Fecha</th><th className="p-3">Horas</th><th className="p-3">Descripción</th><th className="p-3">Estado</th><th className="p-3 text-right">Acción</th></tr>
+                                           </thead>
+                                           <tbody className="divide-y divide-slate-100">
+                                               {overtime.filter(o => o.userId === selectedUser.id).map(o => (
+                                                   <tr key={o.id}>
+                                                       <td className="p-3 pl-4">{new Date(o.date).toLocaleDateString()}</td>
+                                                       <td className={`p-3 font-bold ${o.hours > 0 ? 'text-green-600' : 'text-slate-600'}`}>{o.hours}h</td>
+                                                       <td className="p-3 text-slate-500 truncate max-w-[150px]">{o.description}</td>
+                                                       <td className="p-3">
+                                                           <span className={`px-2 py-0.5 rounded text-xs ${o.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{o.status}</span>
+                                                           {o.hours < 0 && o.status === RequestStatus.APPROVED && (
+                                                                <button onClick={() => setSelectedRedemption(o)} className="ml-2 text-xs text-purple-600 underline"><FileText size={12}/></button>
+                                                           )}
+                                                       </td>
+                                                       <td className="p-3 text-right"><button onClick={() => handleDeleteOvertimeClick(o.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button></td>
+                                                   </tr>
+                                               ))}
+                                           </tbody>
+                                       </table>
+                                   </div>
                                </div>
                            )}
                            
                            {activeUserTab === 'adjustments' && (
                                <div className="space-y-6">
-                                   {/* ... Adjustments UI ... */}
                                    <div className="bg-white p-4 rounded-xl border border-slate-200">
                                        <h4 className="font-bold text-slate-800 mb-4 flex items-center"><Calendar className="mr-2 text-primary" size={18}/> Ajuste de Vacaciones</h4>
                                        <div className="flex gap-4 mb-4">
@@ -949,6 +1011,115 @@ const AdminPanel = () => {
                       </div>
                  </div>
             </div>
+       )}
+
+       {/* ADMIN CREATION MODALS */}
+       
+       {/* Admin Absence Modal */}
+       {showAdminAbsenceModal && (
+           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+               <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+                   <div className="flex justify-between items-center mb-4">
+                       <h3 className="font-bold text-lg text-slate-800">Nueva Ausencia (Admin)</h3>
+                       <button onClick={() => setShowAdminAbsenceModal(false)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                   </div>
+                   <form onSubmit={handleAdminCreateAbsence} className="space-y-4">
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Tipo</label>
+                           <select required className="w-full border rounded p-2 text-sm" value={adminAbsenceForm.typeId} onChange={e => setAdminAbsenceForm({...adminAbsenceForm, typeId: e.target.value})}>
+                               <option value="">Seleccionar...</option>
+                               {absenceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                           </select>
+                       </div>
+                       <div className="grid grid-cols-2 gap-4">
+                           <div>
+                               <label className="block text-xs font-bold text-slate-500 mb-1">Inicio</label>
+                               <input type="date" required className="w-full border rounded p-2 text-sm" value={adminAbsenceForm.startDate} onChange={e => setAdminAbsenceForm({...adminAbsenceForm, startDate: e.target.value})} />
+                           </div>
+                           <div>
+                               <label className="block text-xs font-bold text-slate-500 mb-1">Fin</label>
+                               <input type="date" required className="w-full border rounded p-2 text-sm" value={adminAbsenceForm.endDate} onChange={e => setAdminAbsenceForm({...adminAbsenceForm, endDate: e.target.value})} />
+                           </div>
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Comentario</label>
+                           <textarea className="w-full border rounded p-2 text-sm" rows={2} value={adminAbsenceForm.comment} onChange={e => setAdminAbsenceForm({...adminAbsenceForm, comment: e.target.value})}></textarea>
+                       </div>
+                       <div className="bg-blue-50 text-blue-700 text-xs p-2 rounded">
+                           ⚠️ Se creará como APROBADA y se notificará al usuario.
+                       </div>
+                       <button type="submit" className="w-full bg-primary text-white py-2 rounded-lg font-bold">Crear Ausencia</button>
+                   </form>
+               </div>
+           </div>
+       )}
+
+       {/* Admin Overtime Modal */}
+       {showAdminOvertimeModal && (
+           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+               <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+                   <div className="flex justify-between items-center mb-4">
+                       <h3 className="font-bold text-lg text-slate-800">Registrar Horas (Admin)</h3>
+                       <button onClick={() => setShowAdminOvertimeModal(false)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                   </div>
+                   <form onSubmit={handleAdminCreateOvertime} className="space-y-4">
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Fecha</label>
+                           <input type="date" required className="w-full border rounded p-2 text-sm" value={adminOvertimeForm.date} onChange={e => setAdminOvertimeForm({...adminOvertimeForm, date: e.target.value})} />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Horas</label>
+                           <input type="number" step="0.5" required className="w-full border rounded p-2 text-sm" value={adminOvertimeForm.hours} onChange={e => setAdminOvertimeForm({...adminOvertimeForm, hours: Number(e.target.value)})} />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Descripción</label>
+                           <textarea className="w-full border rounded p-2 text-sm" rows={2} value={adminOvertimeForm.description} onChange={e => setAdminOvertimeForm({...adminOvertimeForm, description: e.target.value})}></textarea>
+                       </div>
+                       <button type="submit" className="w-full bg-primary text-white py-2 rounded-lg font-bold">Registrar</button>
+                   </form>
+               </div>
+           </div>
+       )}
+
+       {/* Admin Redeem Modal */}
+       {showAdminRedeemModal && selectedUser && (
+           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+               <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+                   <div className="flex justify-between items-center mb-4">
+                       <h3 className="font-bold text-lg text-slate-800">Canjear Horas (Admin)</h3>
+                       <button onClick={() => setShowAdminRedeemModal(false)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                   </div>
+                   <form onSubmit={handleAdminRedeemOvertime} className="space-y-4">
+                       <div className="max-h-40 overflow-y-auto border rounded p-2 text-xs space-y-1">
+                           <p className="font-bold text-slate-500 mb-1">Seleccionar Origen:</p>
+                           {overtime.filter(o => o.userId === selectedUser.id && o.hours > 0 && o.consumed < o.hours && o.status === RequestStatus.APPROVED).map(o => (
+                               <label key={o.id} className="flex items-center space-x-2 p-1 hover:bg-slate-50">
+                                   <input type="checkbox" checked={adminRedeemForm.selectedIds.includes(o.id)} 
+                                       onChange={e => {
+                                           if (e.target.checked) setAdminRedeemForm({...adminRedeemForm, selectedIds: [...adminRedeemForm.selectedIds, o.id]});
+                                           else setAdminRedeemForm({...adminRedeemForm, selectedIds: adminRedeemForm.selectedIds.filter(id => id !== o.id)});
+                                       }} 
+                                   />
+                                   <span>{new Date(o.date).toLocaleDateString()} - {o.hours - o.consumed}h disp. ({o.description})</span>
+                               </label>
+                           ))}
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Horas a Canjear</label>
+                           <input type="number" step="0.5" required className="w-full border rounded p-2 text-sm" value={adminRedeemForm.hours} onChange={e => setAdminRedeemForm({...adminRedeemForm, hours: Number(e.target.value)})} />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Tipo</label>
+                           <select className="w-full border rounded p-2 text-sm" value={adminRedeemForm.type} onChange={e => setAdminRedeemForm({...adminRedeemForm, type: e.target.value as RedemptionType})}>
+                               <option value={RedemptionType.TIME_OFF}>Horas Libres</option>
+                               <option value={RedemptionType.DAYS_EXCHANGE}>Días Libres</option>
+                               <option value={RedemptionType.PAYROLL}>Abono en Nómina</option>
+                           </select>
+                       </div>
+                       <button type="submit" disabled={adminRedeemForm.hours <= 0 || adminRedeemForm.selectedIds.length === 0} className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold disabled:opacity-50">Procesar Canje</button>
+                   </form>
+               </div>
+           </div>
        )}
 
       {/* CONFIRMATION MODAL */}
@@ -1061,6 +1232,46 @@ const AdminPanel = () => {
                 </div>
             </div>
         </div>
+      )}
+
+      {/* EDIT TEMPLATE MODAL */}
+      {editingTemplate && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                      <h3 className="font-bold text-lg text-slate-800">Editar Plantilla: {editingTemplate.name}</h3>
+                      <button onClick={() => setEditingTemplate(null)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                  </div>
+                  <form onSubmit={handleUpdateTemplate} className="p-6 overflow-y-auto space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">Nombre (Interno)</label>
+                          <input required className="w-full border rounded p-2 text-sm" value={editingTemplate.name} onChange={e => setEditingTemplate({...editingTemplate, name: e.target.value})} />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">Asunto</label>
+                          <input required className="w-full border rounded p-2 text-sm" value={editingTemplate.subject} onChange={e => setEditingTemplate({...editingTemplate, subject: e.target.value})} />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">Cuerpo del Mensaje</label>
+                          <div className="bg-blue-50 text-blue-700 text-xs p-2 rounded mb-2">
+                              Variables: {`{{name}}, {{startDate}}, {{endDate}}, {{days}}, {{hours}}, {{date}}, {{description}}, {{comment}}, {{type}}, {{details}}`}
+                          </div>
+                          <textarea required className="w-full border rounded p-2 text-sm h-40 font-mono" value={editingTemplate.body} onChange={e => setEditingTemplate({...editingTemplate, body: e.target.value})}></textarea>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-2">Destinatarios</label>
+                          <div className="flex gap-4">
+                              <label className="flex items-center text-sm"><input type="checkbox" className="mr-2" checked={editingTemplate.recipients.includes(Role.WORKER)} onChange={() => toggleRecipient(Role.WORKER)} /> Trabajador</label>
+                              <label className="flex items-center text-sm"><input type="checkbox" className="mr-2" checked={editingTemplate.recipients.includes(Role.SUPERVISOR)} onChange={() => toggleRecipient(Role.SUPERVISOR)} /> Supervisor</label>
+                              <label className="flex items-center text-sm"><input type="checkbox" className="mr-2" checked={editingTemplate.recipients.includes(Role.ADMIN)} onChange={() => toggleRecipient(Role.ADMIN)} /> Admin</label>
+                          </div>
+                      </div>
+                      <div className="pt-2 border-t flex justify-end">
+                          <button type="submit" className="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold">Guardar Cambios</button>
+                      </div>
+                  </form>
+              </div>
+          </div>
       )}
     </div>
   );

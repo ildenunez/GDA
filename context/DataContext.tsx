@@ -40,13 +40,13 @@ interface DataContextType {
   adjustUserVacation: (userId: string, days: number, reason: string) => void;
   addUser: (user: Omit<User, 'id' | 'vacationAdjustment'>, initialVacation?: number, initialOvertime?: number) => void;
   deleteUser: (id: string) => void;
-  addRequest: (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>) => void;
+  addRequest: (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>, initialStatus?: RequestStatus) => void;
   updateRequestStatus: (id: string, status: RequestStatus, reviewerId: string) => void;
   deleteRequest: (id: string) => void; 
   addOvertime: (rec: Omit<OvertimeRecord, 'id' | 'status' | 'consumed' | 'createdAt'> & { status?: RequestStatus }) => void;
   updateOvertimeStatus: (id: string, status: RequestStatus, reviewerId: string) => void;
   deleteOvertime: (id: string) => void; 
-  requestRedemption: (hours: number, recordIds: string[], type: RedemptionType) => void;
+  requestRedemption: (hours: number, recordIds: string[], type: RedemptionType, userId?: string, initialStatus?: RequestStatus) => void;
   sendNotification: (userId: string, title: string, message: string, type: NotificationType) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -137,15 +137,15 @@ const SEED_SHIFT_TYPES: ShiftTypeDefinition[] = [
 ];
 
 const SEED_EMAIL_TEMPLATES: EmailTemplate[] = [
-    { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia (Aviso)', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una nueva solicitud de ausencia.', recipients: [Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et3', eventType: 'REQUEST_APPROVED', name: 'Ausencia Aprobada', subject: 'Solicitud Aprobada', body: 'Hola {{name}}, tu solicitud ha sido APROBADA.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et4', eventType: 'REQUEST_REJECTED', name: 'Ausencia Rechazada', subject: 'Solicitud Rechazada', body: 'Hola {{name}}, tu solicitud ha sido RECHAZADA.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et5', eventType: 'OVERTIME_CREATED', name: 'Registro Horas (Aviso)', subject: 'Registro Horas: {{name}}', body: '{{name}} ha registrado {{hours}} horas extras. Motivo: {{description}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et6', eventType: 'REDEMPTION_CREATED', name: 'Consumo Horas (Aviso)', subject: 'Solicitud Canje: {{name}}', body: '{{name}} solicita canjear {{hours}} horas. Tipo: {{type}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et7', eventType: 'OVERTIME_APPROVED', name: 'Horas/Canje Aprobado', subject: 'Registro Aprobado', body: 'Tu registro de {{hours}}h ha sido APROBADO.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et8', eventType: 'OVERTIME_REJECTED', name: 'Horas/Canje Rechazado', subject: 'Registro Rechazado', body: 'Tu registro de {{hours}}h ha sido RECHAZADO.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
-    { id: 'et9', eventType: 'REQUEST_RECEIVED', name: 'Confirmación Solicitud', subject: 'Solicitud Recibida', body: 'Hola {{name}}, hemos recibido tu solicitud. Queda pendiente de aprobación.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente. Accede para gestionar tus turnos y vacaciones.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia (Aviso)', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una solicitud de ausencia.\n\nFechas: del {{startDate}} al {{endDate}}\nTotal: {{days}} días\nMotivo: {{comment}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et3', eventType: 'REQUEST_APPROVED', name: 'Ausencia Aprobada', subject: 'Solicitud Aprobada', body: 'Hola {{name}}, tu solicitud de ausencia ha sido APROBADA.\n\nFechas: {{startDate}} al {{endDate}}\nDuración: {{days}} días.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et4', eventType: 'REQUEST_REJECTED', name: 'Ausencia Rechazada', subject: 'Solicitud Rechazada', body: 'Hola {{name}}, tu solicitud de ausencia ha sido RECHAZADA.\n\nFechas: {{startDate}} al {{endDate}}\nDuración: {{days}} días.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et5', eventType: 'OVERTIME_CREATED', name: 'Registro Horas (Aviso)', subject: 'Registro Horas: {{name}}', body: '{{name}} ha registrado horas extras.\n\nFecha: {{date}}\nCantidad: {{hours}} horas\nMotivo: {{description}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et6', eventType: 'REDEMPTION_CREATED', name: 'Consumo Horas (Aviso)', subject: 'Solicitud Canje: {{name}}', body: '{{name}} solicita canjear horas.\n\nCantidad: {{hours}} horas\nTipo: {{type}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et7', eventType: 'OVERTIME_APPROVED', name: 'Horas/Canje Aprobado', subject: 'Registro Aprobado', body: 'Tu registro de horas/canje ha sido APROBADO.\n\nFecha: {{date}}\nCantidad: {{hours}}h\nConcepto: {{description}}', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et8', eventType: 'OVERTIME_REJECTED', name: 'Horas/Canje Rechazado', subject: 'Registro Rechazado', body: 'Tu registro de horas/canje ha sido RECHAZADO.\n\nFecha: {{date}}\nCantidad: {{hours}}h\nConcepto: {{description}}', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
+    { id: 'et9', eventType: 'REQUEST_RECEIVED', name: 'Confirmación Solicitud', subject: 'Solicitud Recibida', body: 'Hola {{name}}, hemos recibido tu solicitud.\n\nDetalle: {{details}}\nQueda pendiente de aprobación.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et10', eventType: 'REQUEST_CANCELLED', name: 'Solicitud Cancelada', subject: 'Solicitud Cancelada', body: 'Hola {{name}}, has eliminado correctamente tu solicitud.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
 ];
 
@@ -226,24 +226,36 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
              setEmailTemplates(SEED_EMAIL_TEMPLATES);
         } else {
-             // AUTO-PATCH: Check for templates with missing recipients OR new templates
+             // AUTO-PATCH: Check for templates with missing recipients OR new templates OR outdated bodies
              const updates: Partial<EmailTemplate>[] = [];
              const inserts: EmailTemplate[] = [];
 
-             // 1. Check existing templates for missing roles (e.g. Admin)
              for (const t of templData) {
                  const seed = SEED_EMAIL_TEMPLATES.find(s => s.eventType === t.eventType);
                  if (seed) {
-                     // If seed has more recipients than current DB, update it
+                     let needsUpdate = false;
+                     let updatedTemplate = { ...t };
+
+                     // 1. Check Roles
                      const missingRoles = seed.recipients.filter(r => !t.recipients?.includes(r));
                      if (missingRoles.length > 0 || !t.recipients) {
-                         const newRecipients = Array.from(new Set([...(t.recipients || []), ...seed.recipients]));
-                         updates.push({ ...t, recipients: newRecipients });
+                         updatedTemplate.recipients = Array.from(new Set([...(t.recipients || []), ...seed.recipients]));
+                         needsUpdate = true;
+                     }
+
+                     // 2. Check Body Content (Simple check: if it's too short or missing keywords like 'Fechas', replace with seed)
+                     // This ensures old simple templates get updated to detailed ones automatically
+                     if (t.body && seed.body.length > t.body.length + 20) {
+                         updatedTemplate.body = seed.body;
+                         needsUpdate = true;
+                     }
+
+                     if (needsUpdate) {
+                         updates.push(updatedTemplate);
                      }
                  }
              }
 
-             // 2. Check for completely missing templates (e.g. REQUEST_RECEIVED)
              const existingTypes = templData.map(t => t.eventType);
              const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
              if (missingTemplates.length > 0) {
@@ -252,9 +264,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
              // Apply patches
              if (updates.length > 0) {
-                 console.log(`[AUTO-PATCH] Updating ${updates.length} templates with missing roles...`);
+                 console.log(`[AUTO-PATCH] Updating ${updates.length} templates...`);
                  for (const u of updates) {
-                     await supabase.from('email_templates').update({ recipients: u.recipients }).eq('id', u.id);
+                     await supabase.from('email_templates').update({ 
+                         recipients: u.recipients,
+                         body: u.body 
+                     }).eq('id', u.id);
                  }
              }
              
@@ -264,7 +279,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              }
 
              if (updates.length > 0 || inserts.length > 0) {
-                 // Refresh templates after patch
                  const { data: refreshedTemplates } = await supabase.from('email_templates').select('*');
                  if (refreshedTemplates) setEmailTemplates(refreshedTemplates);
              } else {
@@ -322,6 +336,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           result = result.replace(new RegExp(`{{${key}}}`, 'g'), vars[key]);
       });
       return result;
+  };
+
+  // Helper to calculate days between two dates
+  const calculateDaysCount = (start: string, end: string) => {
+      const s = new Date(start); s.setHours(12,0,0,0);
+      const e = new Date(end); e.setHours(12,0,0,0);
+      if (isNaN(s.getTime()) || isNaN(e.getTime())) return '0';
+      const diff = Math.abs(e.getTime() - s.getTime());
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1;
+      return String(days);
   };
 
   const sendEmailWithTemplate = async (eventType: string, toUser: User, variables: Record<string, string>) => {
@@ -556,14 +580,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUsers(prev => prev.filter(u => u.id !== id));
       
       try {
-          // Cleanup related data
-          // NOTE: We assume 'DELETE' policy is enabled in Supabase as instructed previously
           await supabase.from('requests').delete().eq('userId', id);
           await supabase.from('overtime').delete().eq('userId', id);
           await supabase.from('notifications').delete().eq('userId', id);
           await supabase.from('shifts').delete().eq('userId', id);
           
-          // Cleanup Department supervisors
           const relatedDepts = departments.filter(d => d.supervisorIds.includes(id));
           for (const dept of relatedDepts) {
               const newSupIds = dept.supervisorIds.filter(supId => supId !== id);
@@ -580,38 +601,75 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   };
 
-  const addRequest = async (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>) => {
-    const newReq = { ...req, id: generateId(), status: RequestStatus.PENDING, createdAt: new Date().toISOString() };
+  const addRequest = async (req: Omit<AbsenceRequest, 'id' | 'status' | 'createdAt'>, initialStatus: RequestStatus = RequestStatus.PENDING) => {
+    const newReq = { ...req, id: generateId(), status: initialStatus, createdAt: new Date().toISOString() };
     setRequests(prev => [newReq, ...prev]);
     await supabase.from('requests').insert(newReq);
+    
     const user = users.find(u => u.id === req.userId);
     if (user) {
-        // Send confirmation email to self (even if Admin)
-        sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name });
+        const sDate = new Date(req.startDate).toLocaleDateString();
+        const eDate = new Date(req.endDate).toLocaleDateString();
+        const daysCount = calculateDaysCount(req.startDate, req.endDate);
+        const details = `Ausencia del ${sDate} al ${eDate} (${daysCount} días). Motivo: ${req.comment}`;
 
-        const adminUsers = users.filter(u => u.role === Role.ADMIN);
-        const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
-        const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
-        const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
-        allRecipients.forEach(recipient => {
-            if (recipient.id !== req.userId) {
-                sendNotification(recipient.id, 'Nueva Solicitud', `${user.name} ha solicitado ausencia.`, NotificationType.INFO);
-                sendEmailWithTemplate('REQUEST_CREATED', recipient, { name: user.name });
-            }
-        });
+        // Confirm creation
+        sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name, details: details });
+
+        if (initialStatus === RequestStatus.APPROVED) {
+             // Admin created logic: Notify approval immediately
+             sendNotification(req.userId, 'Solicitud Aprobada', `Tu solicitud de ausencia creada por administración ha sido aprobada.`, NotificationType.SUCCESS);
+             sendEmailWithTemplate('REQUEST_APPROVED', user, { 
+                 name: user.name, 
+                 startDate: sDate, 
+                 endDate: eDate, 
+                 days: daysCount 
+             });
+        } else {
+             // Normal logic
+             const adminUsers = users.filter(u => u.role === Role.ADMIN);
+             const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
+             const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
+             const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
+             allRecipients.forEach(recipient => {
+                 if (recipient.id !== req.userId) {
+                     sendNotification(recipient.id, 'Nueva Solicitud', `${user.name} ha solicitado ausencia.`, NotificationType.INFO);
+                     sendEmailWithTemplate('REQUEST_CREATED', recipient, { 
+                         name: user.name, 
+                         startDate: sDate,
+                         endDate: eDate,
+                         days: daysCount,
+                         comment: req.comment
+                     });
+                 }
+             });
+        }
     }
   };
 
   const updateRequestStatus = async (id: string, status: RequestStatus, reviewerId: string) => {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
     await supabase.from('requests').update({ status }).eq('id', id);
+    
     const req = requests.find(r => r.id === id);
     if (req) {
       const user = users.find(u => u.id === req.userId);
       if (user) {
+          const sDate = new Date(req.startDate).toLocaleDateString();
+          const eDate = new Date(req.endDate).toLocaleDateString();
+          const daysCount = calculateDaysCount(req.startDate, req.endDate);
+
           sendNotification(req.userId, `Solicitud ${status === RequestStatus.APPROVED ? 'Aprobada' : 'Rechazada'}`, `Tu solicitud de ausencia ha sido ${status.toLowerCase()}.`, status === RequestStatus.APPROVED ? NotificationType.SUCCESS : NotificationType.ERROR);
-          if (status === RequestStatus.APPROVED) sendEmailWithTemplate('REQUEST_APPROVED', user, { name: user.name });
-          if (status === RequestStatus.REJECTED) sendEmailWithTemplate('REQUEST_REJECTED', user, { name: user.name });
+          
+          const vars = { 
+              name: user.name, 
+              startDate: sDate, 
+              endDate: eDate, 
+              days: daysCount 
+          };
+
+          if (status === RequestStatus.APPROVED) sendEmailWithTemplate('REQUEST_APPROVED', user, vars);
+          if (status === RequestStatus.REJECTED) sendEmailWithTemplate('REQUEST_REJECTED', user, vars);
       }
     }
   };
@@ -625,7 +683,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const { error } = await supabase.from('requests').delete().eq('id', id);
           if (error) throw error;
           
-          // Send cancellation email if user still exists
           if (req) {
               const user = users.find(u => u.id === req.userId);
               if (user) sendEmailWithTemplate('REQUEST_CANCELLED', user, { name: user.name });
@@ -644,24 +701,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const newRec = { ...rec, id: generateId(), status: rec.status || RequestStatus.PENDING, consumed: 0, createdAt: new Date().toISOString(), isAdjustment: isAutoApproved };
     setOvertime(prev => [newRec, ...prev]);
     await supabase.from('overtime').insert(newRec);
+    
     const user = users.find(u => u.id === rec.userId);
+    const dateStr = new Date(rec.date).toLocaleDateString();
+
      if (!isAutoApproved) {
         if (user) {
-            sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name }); // Reuse generic received template
+            sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name, details: `Registro de ${rec.hours}h el ${dateStr}` }); 
             sendNotification(user.id, 'Registro de Horas', `Has registrado ${rec.hours} horas extras.`, NotificationType.INFO);
+            
             const adminUsers = users.filter(u => u.role === Role.ADMIN);
             const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
             const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
             const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
+            
             allRecipients.forEach(recipient => {
                 if (recipient.id !== rec.userId) {
-                    sendEmailWithTemplate('OVERTIME_CREATED', recipient, { name: user.name, hours: String(rec.hours), description: rec.description });
+                    sendEmailWithTemplate('OVERTIME_CREATED', recipient, { 
+                        name: user.name, 
+                        hours: String(rec.hours), 
+                        description: rec.description,
+                        date: dateStr
+                    });
                 }
             });
         }
      } else {
-         if (rec.userId !== currentUser?.id) {
-             sendNotification(rec.userId, 'Ajuste de Horas', `Un administrador ha añadido ${rec.hours}h a tu bolsa.`, NotificationType.SUCCESS);
+         // Auto-approved (Admin)
+         if (user) {
+             const title = rec.hours < 0 ? 'Canje Aprobado (Admin)' : 'Horas Aprobadas (Admin)';
+             sendNotification(rec.userId, title, `Se han ${rec.hours < 0 ? 'descontado' : 'añadido'} ${Math.abs(rec.hours)}h por administración.`, NotificationType.SUCCESS);
+             
+             // Send standard approved template
+             sendEmailWithTemplate('OVERTIME_APPROVED', user, { 
+                 name: user.name, 
+                 hours: String(Math.abs(rec.hours)), 
+                 date: dateStr,
+                 description: rec.description
+             });
          }
      }
   };
@@ -690,8 +767,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const user = users.find(u => u.id === rec.userId);
       sendNotification(rec.userId, `Solicitud ${status === RequestStatus.APPROVED ? 'Aprobada' : 'Rechazada'}`, `El registro de horas (${rec.hours}h) ha sido ${status.toLowerCase()}.`, status === RequestStatus.APPROVED ? NotificationType.SUCCESS : NotificationType.ERROR);
       if(user) {
+          const dateStr = new Date(rec.date).toLocaleDateString();
           const templateType = status === RequestStatus.APPROVED ? 'OVERTIME_APPROVED' : 'OVERTIME_REJECTED';
-          sendEmailWithTemplate(templateType, user, { name: user.name, hours: String(Math.abs(rec.hours)) });
+          sendEmailWithTemplate(templateType, user, { 
+              name: user.name, 
+              hours: String(Math.abs(rec.hours)),
+              date: dateStr,
+              description: rec.description
+          });
       }
     }
   };
@@ -711,7 +794,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (rec.hours < 0 && rec.status === RequestStatus.APPROVED && rec.linkedRecordIds && rec.linkedRecordIds.length > 0) {
               // RESTORE LOGIC
               let remainingToRestore = Math.abs(rec.hours);
-              // Fetch fresh state to avoid stale data
               const { data: freshData } = await supabase.from('overtime').select('*');
               const currentDbState = freshData || overtime;
               
@@ -745,36 +827,80 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   };
 
-  const requestRedemption = async (hours: number, recordIds: string[], type: RedemptionType) => {
-      if (!currentUser) return;
+  const requestRedemption = async (hours: number, recordIds: string[], type: RedemptionType, userId?: string, initialStatus: RequestStatus = RequestStatus.PENDING) => {
+      const targetUserId = userId || currentUser?.id;
+      if (!targetUserId) return;
+      
+      const user = users.find(u => u.id === targetUserId);
+      if(!user) return;
+
       const newRec = {
           id: generateId(),
-          userId: currentUser.id,
+          userId: targetUserId,
           date: new Date().toISOString(),
           hours: -Math.abs(hours),
-          description: `Solicitud de Canje: ${type}`,
-          status: RequestStatus.PENDING,
+          description: `Solicitud de Canje: ${type} ${initialStatus === RequestStatus.APPROVED ? '(Admin)' : ''}`,
+          status: initialStatus,
           consumed: 0,
           createdAt: new Date().toISOString(),
           redemptionType: type,
           linkedRecordIds: recordIds
       };
+      
       setOvertime(prev => [newRec, ...prev]);
       await supabase.from('overtime').insert(newRec);
-      sendNotification(currentUser.id, 'Canje Solicitado', `Solicitud de canje de ${hours}h enviada correctamente.`, NotificationType.INFO);
-      
-      // Send confirmation to self
-      sendEmailWithTemplate('REQUEST_RECEIVED', currentUser, { name: currentUser.name });
 
-      const adminUsers = users.filter(u => u.role === Role.ADMIN);
-      const supervisorIds = currentUser.departmentId ? departments.find(d => d.id === currentUser.departmentId)?.supervisorIds || [] : [];
-      const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
-      const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
-      allRecipients.forEach(recipient => {
-          if (recipient.id !== currentUser.id) {
-              sendEmailWithTemplate('REDEMPTION_CREATED', recipient, { name: currentUser.name, hours: String(hours), type: type });
+      // If created as APPROVED (Admin action), immediately consume hours
+      if (initialStatus === RequestStatus.APPROVED) {
+          let remainingToConsume = Math.abs(hours);
+          // We need to update the records in state AND DB
+          const updatedOvertime = [...overtime, newRec]; // Include the new one for context although it's not a source
+          
+          // Loop through recordIds to deduct balance
+          for (const linkedId of recordIds) {
+              if (remainingToConsume <= 0) break;
+              const sourceRec = overtime.find(o => o.id === linkedId);
+              if (sourceRec) {
+                  const available = sourceRec.hours - sourceRec.consumed;
+                  const take = Math.min(available, remainingToConsume);
+                  if (take > 0) {
+                      remainingToConsume -= take;
+                      const newConsumed = sourceRec.consumed + take;
+                      
+                      // Update State
+                      const index = updatedOvertime.findIndex(o => o.id === linkedId);
+                      if (index !== -1) updatedOvertime[index] = { ...updatedOvertime[index], consumed: newConsumed };
+                      setOvertime(prev => prev.map(o => o.id === linkedId ? { ...o, consumed: newConsumed } : o));
+
+                      // Update DB
+                      await supabase.from('overtime').update({ consumed: newConsumed }).eq('id', linkedId);
+                  }
+              }
           }
-      });
+          
+          sendNotification(targetUserId, 'Canje Aprobado', `Administración ha procesado un canje de ${hours}h.`, NotificationType.SUCCESS);
+          sendEmailWithTemplate('OVERTIME_APPROVED', user, { 
+              name: user.name, 
+              hours: String(hours),
+              date: new Date().toLocaleDateString(),
+              description: 'Canje procesado por administración'
+          });
+
+      } else {
+          // Standard Flow
+          sendNotification(targetUserId, 'Canje Solicitado', `Solicitud de canje de ${hours}h enviada correctamente.`, NotificationType.INFO);
+          sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name, details: `Canje de ${hours}h` });
+
+          const adminUsers = users.filter(u => u.role === Role.ADMIN);
+          const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
+          const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
+          const allRecipients = [...adminUsers, ...supervisorUsers].filter((v,i,a)=>a.findIndex(t=>(t.id===v.id))===i);
+          allRecipients.forEach(recipient => {
+              if (recipient.id !== targetUserId) {
+                  sendEmailWithTemplate('REDEMPTION_CREATED', recipient, { name: user.name, hours: String(hours), type: type });
+              }
+          });
+      }
   };
 
   const markNotificationRead = async (id: string) => {
