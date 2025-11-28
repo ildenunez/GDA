@@ -80,69 +80,12 @@ interface DataContextType {
   
   // Data Management
   importDatabase: (data: any) => void;
+  fetchData: () => Promise<void>; // Exposed for manual refresh
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// --- INITIAL DATA FOR SEEDING ---
-const SEED_DEPARTMENTS: Department[] = [
-  { id: 'd1', name: 'Desarrollo', supervisorIds: ['u2'] },
-  { id: 'd2', name: 'Marketing', supervisorIds: ['u2'] },
-  { id: 'd3', name: 'Recursos Humanos', supervisorIds: [] }
-];
-
-const SEED_USERS: User[] = [
-  { 
-    id: 'u1', 
-    name: 'Juan Perez', 
-    email: 'juan@nexus.com', 
-    role: Role.WORKER, 
-    departmentId: 'd1', 
-    avatarUrl: 'https://ui-avatars.com/api/?name=Juan+Perez&background=0D8ABC&color=fff',
-    vacationAdjustment: 0,
-    vacationHistory: [],
-    password: '123',
-    calendarColor: '#3b82f6' // Blue
-  },
-  { 
-    id: 'u2', 
-    name: 'Laura Gomez', 
-    email: 'laura@nexus.com', 
-    role: Role.SUPERVISOR, 
-    departmentId: 'd1', 
-    avatarUrl: 'https://ui-avatars.com/api/?name=Laura+Gomez&background=10B981&color=fff',
-    vacationAdjustment: 0,
-    vacationHistory: [],
-    password: '123',
-    calendarColor: '#10b981' // Green
-  },
-  { 
-    id: 'u3', 
-    name: 'Carlos Admin', 
-    email: 'admin@nexus.com', 
-    role: Role.ADMIN, 
-    departmentId: 'd3', 
-    avatarUrl: 'https://ui-avatars.com/api/?name=Carlos+Admin&background=8B5CF6&color=fff',
-    vacationAdjustment: 0,
-    vacationHistory: [],
-    password: '123',
-    calendarColor: '#8b5cf6' // Purple
-  }
-];
-
-const SEED_ABSENCE_TYPES: AbsenceType[] = [
-  { id: 't1', name: 'Vacaciones', isClosedRange: false, color: 'bg-blue-100 text-blue-800', deductsDays: true },
-  { id: 't2', name: 'Baja Médica', isClosedRange: false, color: 'bg-green-100 text-green-800', deductsDays: false },
-  { id: 't3', name: 'Asuntos Propios', isClosedRange: false, color: 'bg-purple-100 text-purple-800', allowanceDays: 2, deductsDays: true },
-  { id: 't4', name: 'Navidad (Cerrado)', isClosedRange: true, availableRanges: [{ start: '2023-12-24', end: '2023-12-31' }], color: 'bg-red-100 text-red-800', deductsDays: false }
-];
-
-const SEED_SHIFT_TYPES: ShiftTypeDefinition[] = [
-    { id: 'MORNING', name: 'Mañana', color: 'bg-amber-100 text-amber-800 border-amber-300', startTime: '08:00', endTime: '15:00' },
-    { id: 'AFTERNOON', name: 'Tarde', color: 'bg-indigo-100 text-indigo-800 border-indigo-300', startTime: '15:00', endTime: '22:00' },
-    { id: 'NIGHT', name: 'Noche', color: 'bg-slate-800 text-slate-200 border-slate-600', startTime: '22:00', endTime: '06:00' }
-];
-
+// --- SEED DATA DEFINITIONS (Only for manual reset or templates) ---
 const SEED_EMAIL_TEMPLATES: EmailTemplate[] = [
     { id: 'et1', eventType: 'WELCOME', name: 'Bienvenida Usuario', subject: 'Bienvenido a RRHH CHS', body: 'Hola {{name}}, tu cuenta ha sido creada correctamente. Accede para gestionar tus turnos y vacaciones.', recipients: [Role.WORKER, Role.SUPERVISOR, Role.ADMIN] },
     { id: 'et2', eventType: 'REQUEST_CREATED', name: 'Nueva Solicitud Ausencia (Aviso)', subject: 'Nueva Solicitud de {{name}}', body: 'El usuario {{name}} ha creado una solicitud de ausencia.\n\nFechas: del {{startDate}} al {{endDate}}\nTotal: {{days}} días\nMotivo: {{comment}}', recipients: [Role.SUPERVISOR, Role.ADMIN] },
@@ -192,149 +135,130 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       window.dispatchEvent(event);
   };
 
-  // --- SUPABASE FETCHING ---
+  // --- SUPABASE FETCHING (ROBUST) ---
   const fetchData = async () => {
     setIsLoading(true);
     try {
-        const { data: usersData, error: usersError } = await supabase.from('users').select('*');
-        if (usersError) throw usersError;
+        console.log("Fetching data from Supabase...");
+        
+        // We use Promise.allSettled to ensure that if one table fails (e.g. shifts not created yet),
+        // the other tables (users, depts) still load. This prevents "data disappearance".
+        const results = await Promise.allSettled([
+            supabase.from('users').select('*'),
+            supabase.from('departments').select('*'),
+            supabase.from('absence_types').select('*'),
+            supabase.from('requests').select('*'),
+            supabase.from('overtime').select('*'),
+            supabase.from('notifications').select('*'),
+            supabase.from('email_templates').select('*'),
+            supabase.from('shift_types').select('*'),
+            supabase.from('shifts').select('*'),
+            supabase.from('system_messages').select('*').eq('id', 'global_msg').single(),
+            supabase.from('internal_messages').select('*')
+        ]);
 
-        const { data: deptsData } = await supabase.from('departments').select('*');
-        const { data: typesData } = await supabase.from('absence_types').select('*');
-        const { data: shiftTypesData } = await supabase.from('shift_types').select('*');
-        const { data: reqsData } = await supabase.from('requests').select('*');
-        const { data: otData } = await supabase.from('overtime').select('*');
-        const { data: notifData } = await supabase.from('notifications').select('*');
-        const { data: templData } = await supabase.from('email_templates').select('*');
-        const { data: shiftsData } = await supabase.from('shifts').select('*');
-        const { data: msgData } = await supabase.from('system_messages').select('*').eq('id', 'global_msg').single();
-        const { data: intMsgData } = await supabase.from('internal_messages').select('*');
+        // Helper to extract data or log error
+        const getData = (result: PromiseSettledResult<any>, tableName: string) => {
+            if (result.status === 'fulfilled') {
+                if (result.value.error) {
+                    console.warn(`Error fetching ${tableName}:`, result.value.error.message);
+                    return null;
+                }
+                return result.value.data;
+            } else {
+                console.error(`Failed to fetch ${tableName}`, result.reason);
+                return null;
+            }
+        };
 
-        // Only seed if fetch was SUCCESSFUL but returned NO data
-        // This prevents overwriting data if connection fails (usersData would be null/undefined on error, but handled by catch)
-        if (usersData && usersData.length === 0 && deptsData && deptsData.length === 0) {
-            console.log("Database looks empty. Seeding initial data...");
-            await seedDatabase();
-            return; 
-        }
+        const usersData = getData(results[0], 'users');
+        const deptsData = getData(results[1], 'departments');
+        const typesData = getData(results[2], 'absence_types');
+        const reqsData = getData(results[3], 'requests');
+        const otData = getData(results[4], 'overtime');
+        const notifData = getData(results[5], 'notifications');
+        const templData = getData(results[6], 'email_templates');
+        const shiftTypesData = getData(results[7], 'shift_types');
+        const shiftsData = getData(results[8], 'shifts');
+        const msgData = getData(results[9], 'system_messages');
+        const intMsgData = getData(results[10], 'internal_messages');
 
+        // Update state ONLY if data is available (never overwrite with empty if error)
         if (usersData) setUsers(usersData);
         if (deptsData) setDepartments(deptsData);
         if (typesData) setAbsenceTypes(typesData);
-        
-        // CRITICAL FIX: Handle shiftTypes carefully. 
-        // If data exists, use it. If data is empty array (meaning fetch success but table empty), seed it.
-        // If data is null (fetch error), do NOTHING (don't overwrite UI with seed data, let user know there's an error)
-        if (shiftTypesData && shiftTypesData.length > 0) {
-            setShiftTypes(shiftTypesData);
-        } else if (shiftTypesData && shiftTypesData.length === 0) {
-            // Only seed if we successfully connected and it was truly empty
-            console.log("Shift types table empty, seeding defaults...");
-            await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
-            setShiftTypes(SEED_SHIFT_TYPES);
-        }
-        
         if (reqsData) setRequests(reqsData);
         if (otData) setOvertime(otData);
         if (notifData) setNotifications(notifData);
+        if (shiftTypesData) setShiftTypes(shiftTypesData);
         if (shiftsData) setShifts(shiftsData);
         if (msgData) setSystemMessage(msgData);
         if (intMsgData) setInternalMessages(intMsgData);
         
-        if (!templData || templData.length === 0) {
-             if (templData) await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES); // Only insert if fetch success
-             setEmailTemplates(SEED_EMAIL_TEMPLATES);
-        } else {
-             // AUTO-PATCH: Check for templates with missing recipients OR new templates OR outdated bodies
-             const updates: Partial<EmailTemplate>[] = [];
-             const inserts: EmailTemplate[] = [];
-
-             for (const t of templData) {
-                 const seed = SEED_EMAIL_TEMPLATES.find(s => s.eventType === t.eventType);
-                 if (seed) {
-                     let needsUpdate = false;
-                     let updatedTemplate = { ...t };
-
-                     // 1. Check Roles
-                     const missingRoles = seed.recipients.filter(r => !t.recipients?.includes(r));
-                     if (missingRoles.length > 0 || !t.recipients) {
-                         updatedTemplate.recipients = Array.from(new Set([...(t.recipients || []), ...seed.recipients]));
-                         needsUpdate = true;
-                     }
-
-                     // 2. Check Body Content (Simple check: if it's too short or missing keywords like 'Fechas', replace with seed)
-                     if (t.body && seed.body.length > t.body.length + 20) {
-                         updatedTemplate.body = seed.body;
-                         needsUpdate = true;
-                     }
-
-                     if (needsUpdate) {
-                         updates.push(updatedTemplate);
-                     }
-                 }
-             }
-
-             const existingTypes = templData.map(t => t.eventType);
-             const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
-             if (missingTemplates.length > 0) {
-                 inserts.push(...missingTemplates);
-             }
-
-             // Apply patches
-             if (updates.length > 0) {
-                 console.log(`[AUTO-PATCH] Updating ${updates.length} templates...`);
-                 for (const u of updates) {
-                     await supabase.from('email_templates').update({ 
-                         recipients: u.recipients,
-                         body: u.body 
-                     }).eq('id', u.id);
-                 }
-             }
-             
-             if (inserts.length > 0) {
-                 console.log(`[AUTO-PATCH] Inserting ${inserts.length} new templates...`);
-                 await supabase.from('email_templates').insert(inserts);
-             }
-
-             if (updates.length > 0 || inserts.length > 0) {
-                 const { data: refreshedTemplates } = await supabase.from('email_templates').select('*');
-                 if (refreshedTemplates) setEmailTemplates(refreshedTemplates);
+        // TEMPLATE AUTO-PATCHING (Essential for functionality)
+        if (templData) {
+             if (templData.length === 0) {
+                 await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES); 
+                 setEmailTemplates(SEED_EMAIL_TEMPLATES);
              } else {
+                 const updates: Partial<EmailTemplate>[] = [];
+                 const inserts: EmailTemplate[] = [];
+
+                 for (const t of templData) {
+                     const seed = SEED_EMAIL_TEMPLATES.find(s => s.eventType === t.eventType);
+                     if (seed) {
+                         let needsUpdate = false;
+                         let updatedTemplate = { ...t };
+
+                         // 1. Check Roles
+                         const missingRoles = seed.recipients.filter(r => !t.recipients?.includes(r));
+                         if (missingRoles.length > 0 || !t.recipients) {
+                             updatedTemplate.recipients = Array.from(new Set([...(t.recipients || []), ...seed.recipients]));
+                             needsUpdate = true;
+                         }
+                         // 2. Check Body Content (Simplified check)
+                         if (t.body && seed.body.length > t.body.length + 20) {
+                             updatedTemplate.body = seed.body;
+                             needsUpdate = true;
+                         }
+                         if (needsUpdate) updates.push(updatedTemplate);
+                     }
+                 }
+
+                 const existingTypes = templData.map(t => t.eventType);
+                 const missingTemplates = SEED_EMAIL_TEMPLATES.filter(t => !existingTypes.includes(t.eventType));
+                 if (missingTemplates.length > 0) inserts.push(...missingTemplates);
+
+                 // Apply patches in background
+                 if (updates.length > 0) {
+                     for (const u of updates) {
+                         await supabase.from('email_templates').update({ recipients: u.recipients, body: u.body }).eq('id', u.id);
+                     }
+                 }
+                 if (inserts.length > 0) {
+                     await supabase.from('email_templates').insert(inserts);
+                 }
+                 
                  setEmailTemplates(templData);
              }
         }
 
     } catch (error: any) {
-        console.error("Error fetching data from Supabase:", error);
-        notifyUI('Error de Conexión', 'No se pudieron cargar los datos. Revisa tu conexión. ' + (error.message || ''), 'error');
-        // Do NOT seed on error to prevent data loss or duplicate fears
+        console.error("Critical Error fetching data:", error);
+        notifyUI('Error de Conexión', 'Hubo un problema cargando los datos. ' + (error.message || ''), 'error');
     } finally {
         setIsLoading(false);
     }
   };
 
   const seedDatabase = async () => {
-      try {
-          await supabase.from('departments').insert(SEED_DEPARTMENTS);
-          await supabase.from('users').insert(SEED_USERS);
-          await supabase.from('absence_types').insert(SEED_ABSENCE_TYPES);
-          await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
-          await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
-          // Initial System Message
-          await supabase.from('system_messages').insert({
-              id: 'global_msg', 
-              text: 'Bienvenido a RRHH CHS', 
-              active: true, 
-              color: 'bg-blue-100 text-blue-800 border-blue-200'
-          });
-          fetchData();
-      } catch (e) {
-          console.error("Error seeding database:", e);
-      }
+      // Logic removed/disabled to prevent accidental overwrite of live data.
+      console.log("Auto-seed is disabled for safety.");
   };
 
   useEffect(() => {
     fetchData();
+    // Real-time subscriptions
     const channels = [
         supabase.channel('public:users').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData()).subscribe(),
         supabase.channel('public:departments').on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, () => fetchData()).subscribe(),
@@ -359,7 +283,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return result;
   };
 
-  // Helper to calculate days between two dates
   const calculateDaysCount = (start: string, end: string) => {
       const s = new Date(start); s.setHours(12,0,0,0);
       const e = new Date(end); e.setHours(12,0,0,0);
@@ -386,7 +309,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const subject = parseTemplate(template.subject, variables);
       const body = parseTemplate(template.body, variables);
 
-      // PRIORITY 1: SMTP via Vercel API
       if (smtpConfig.host && smtpConfig.user && smtpConfig.pass) {
           try {
               console.log("[EMAIL] Sending via SMTP...");
@@ -405,7 +327,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (response.ok) {
                   if (eventType === 'WELCOME') notifyUI('Email Enviado', `Bienvenida enviada a ${toUser.email} (SMTP)`, 'success');
                   console.log("[EMAIL] SMTP Success");
-                  return; // Successfully sent via SMTP
+                  return;
               } else {
                   console.warn("SMTP send failed, falling back if available:", result.error);
               }
@@ -414,7 +336,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
       }
 
-      // PRIORITY 2: EmailJS Fallback
       if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
           try {
              console.log("[EMAIL] Sending via EmailJS...");
@@ -466,7 +387,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       notifyUI('Enviando...', 'Iniciando prueba de envío...', 'info');
 
-      // PRIORITY 1: SMTP
       if (smtpConfig.host && smtpConfig.user && smtpConfig.pass) {
           try {
               const response = await fetch('/api/send-email', {
@@ -492,7 +412,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
       }
       
-      // PRIORITY 2: EmailJS
       if (emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey) {
           try {
                // @ts-ignore
@@ -545,7 +464,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (error) {
           console.error("Error sending internal message:", error);
-          notifyUI('Error', 'No se pudo enviar el mensaje interno. ' + error.message, 'error');
+          if (error.code === '42P01') {
+              notifyUI('Error Crítico', 'Falta la tabla "internal_messages" en Supabase. Ejecuta el script SQL.', 'error');
+          } else {
+              notifyUI('Error', 'No se pudo enviar el mensaje interno. ' + error.message, 'error');
+          }
       } else {
           notifyUI('Mensaje Enviado', 'El mensaje interno ha sido enviado.', 'success');
       }
@@ -571,19 +494,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const currentDeleted = msg.deletedByUserIds || [];
       if (!currentDeleted.includes(currentUser.id)) {
           const updatedDeleted = [...currentDeleted, currentUser.id];
-          
-          // Optimistic update
           setInternalMessages(prev => prev.map(m => m.id === messageId ? { ...m, deletedByUserIds: updatedDeleted } : m));
-          
           const { error } = await supabase.from('internal_messages').update({ deletedByUserIds: updatedDeleted }).eq('id', messageId);
           
           if (error) {
               console.error("Error deleting message:", error);
-              // Check for common errors
-              if (error.code === '42703') { // Undefined column
-                  notifyUI('Error de Base de Datos', 'Falta la columna "deletedByUserIds". Ejecuta el script SQL.', 'error');
-              } else if (error.code === '42501') { // RLS
-                  notifyUI('Error de Permisos', 'No tienes permiso para editar mensajes. Revisa RLS en Supabase.', 'error');
+              if (error.message.includes('column')) {
+                  notifyUI('Error BD', 'Falta la columna "deletedByUserIds" en la tabla. Actualiza la base de datos.', 'error');
               } else {
                   notifyUI('Error', `No se pudo eliminar: ${error.message}`, 'error');
               }
@@ -610,9 +527,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const login = (email: string) => {
-    const user = users.find(u => u.email === email);
+    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (user) setCurrentUser(user);
-    else notifyUI('Error Login', 'Usuario no encontrado. Si acabas de conectar la BD, recarga.', 'error');
+    else notifyUI('Error Login', 'Usuario no encontrado. Revisa que la base de datos esté conectada.', 'error');
   };
 
   const logout = () => setCurrentUser(null);
@@ -654,16 +571,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         avatarUrl: user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`,
         calendarColor: user.calendarColor || '#3b82f6'
     };
-    setUsers(prev => [...prev, newUser]);
-    const { error } = await supabase.from('users').insert(newUser);
-    if(error) notifyUI('Error BD', error.message, 'error');
 
+    // IMPORTANT: Verify database insertion before updating state to avoid "Ghost Users"
+    const { error } = await supabase.from('users').insert(newUser);
+    
+    if (error) {
+        console.error("Error creating user in DB:", error);
+        let msg = error.message;
+        if (msg.includes('calendarColor')) {
+            msg = 'Falta la columna "calendarColor" en la base de datos. Ejecuta el script SQL en Supabase.';
+        }
+        notifyUI('Error al Crear Usuario', msg, 'error');
+        return; // STOP execution if DB fails
+    }
+
+    // Only update local state if DB success
+    setUsers(prev => [...prev, newUser]);
     sendEmailWithTemplate('WELCOME', newUser, { name: newUser.name });
+    
     if (initialOvertime > 0) {
         const overtimeRec = { id: generateId(), userId: newUserId, date: new Date().toISOString(), hours: initialOvertime, description: 'Saldo Inicial (Carga Admin)', status: RequestStatus.APPROVED, consumed: 0, createdAt: new Date().toISOString(), isAdjustment: true };
         setOvertime(prev => [...prev, overtimeRec]);
         await supabase.from('overtime').insert(overtimeRec);
     }
+    
+    notifyUI('Usuario Creado', 'El usuario se ha creado correctamente.', 'success');
   };
   
   const deleteUser = async (id: string) => {
@@ -709,7 +641,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name, details: details });
 
         if (initialStatus === RequestStatus.APPROVED) {
-             // Admin created logic: Notify approval immediately
              sendNotification(req.userId, 'Solicitud Aprobada', `Tu solicitud de ausencia creada por administración ha sido aprobada.`, NotificationType.SUCCESS);
              sendEmailWithTemplate('REQUEST_APPROVED', user, { 
                  name: user.name, 
@@ -718,7 +649,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                  days: daysCount 
              });
         } else {
-             // Normal logic
              const adminUsers = users.filter(u => u.role === Role.ADMIN);
              const supervisorIds = user.departmentId ? departments.find(d => d.id === user.departmentId)?.supervisorIds || [] : [];
              const supervisorUsers = users.filter(u => supervisorIds.includes(u.id));
@@ -819,12 +749,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
         }
      } else {
-         // Auto-approved (Admin)
          if (user) {
              const title = rec.hours < 0 ? 'Canje Aprobado (Admin)' : 'Horas Aprobadas (Admin)';
              sendNotification(rec.userId, title, `Se han ${rec.hours < 0 ? 'descontado' : 'añadido'} ${Math.abs(rec.hours)}h por administración.`, NotificationType.SUCCESS);
              
-             // Send standard approved template
              sendEmailWithTemplate('OVERTIME_APPROVED', user, { 
                  name: user.name, 
                  hours: String(Math.abs(rec.hours)), 
@@ -884,7 +812,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       try {
           if (rec.hours < 0 && rec.status === RequestStatus.APPROVED && rec.linkedRecordIds && rec.linkedRecordIds.length > 0) {
-              // RESTORE LOGIC
               let remainingToRestore = Math.abs(rec.hours);
               const { data: freshData } = await supabase.from('overtime').select('*');
               const currentDbState = freshData || overtime;
@@ -942,13 +869,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setOvertime(prev => [newRec, ...prev]);
       await supabase.from('overtime').insert(newRec);
 
-      // If created as APPROVED (Admin action), immediately consume hours
       if (initialStatus === RequestStatus.APPROVED) {
           let remainingToConsume = Math.abs(hours);
-          // We need to update the records in state AND DB
-          const updatedOvertime = [...overtime, newRec]; // Include the new one for context although it's not a source
+          const updatedOvertime = [...overtime, newRec]; 
           
-          // Loop through recordIds to deduct balance
           for (const linkedId of recordIds) {
               if (remainingToConsume <= 0) break;
               const sourceRec = overtime.find(o => o.id === linkedId);
@@ -958,13 +882,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   if (take > 0) {
                       remainingToConsume -= take;
                       const newConsumed = sourceRec.consumed + take;
-                      
-                      // Update State
                       const index = updatedOvertime.findIndex(o => o.id === linkedId);
                       if (index !== -1) updatedOvertime[index] = { ...updatedOvertime[index], consumed: newConsumed };
                       setOvertime(prev => prev.map(o => o.id === linkedId ? { ...o, consumed: newConsumed } : o));
-
-                      // Update DB
                       await supabase.from('overtime').update({ consumed: newConsumed }).eq('id', linkedId);
                   }
               }
@@ -979,7 +899,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           });
 
       } else {
-          // Standard Flow
           sendNotification(targetUserId, 'Canje Solicitado', `Solicitud de canje de ${hours}h enviada correctamente.`, NotificationType.INFO);
           sendEmailWithTemplate('REQUEST_RECEIVED', user, { name: user.name, details: `Canje de ${hours}h` });
 
@@ -1015,11 +934,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         notifyUI('Guardado', 'Tipo de ausencia actualizado.', 'success');
     } catch (error: any) {
         setAbsenceTypes(originalTypes);
-        if (error.code === '42501' || error.message?.includes('policy')) {
-             notifyUI('Error Permisos', 'Ejecuta en Supabase: "ALTER TABLE public.absence_types DISABLE ROW LEVEL SECURITY;"', 'error');
-        } else {
-             notifyUI('Error', 'No se pudo guardar los cambios.', 'error');
-        }
+        notifyUI('Error', 'No se pudo guardar los cambios.', 'error');
     }
   };
 
@@ -1057,7 +972,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // --- SHIFT MANAGEMENT ---
   const addShift = async (userId: string, date: string, typeId: string) => {
-      // Check if shift already exists
       const exists = shifts.find(s => s.userId === userId && s.date === date);
       if (exists) {
           await deleteShift(exists.id); 
@@ -1085,7 +999,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { error } = await supabase.from('shift_types').insert(newType);
     if (error) {
         console.error("Error creating shift type:", error);
-        notifyUI('Error al guardar', 'No se pudo guardar el turno en la base de datos. ' + error.message, 'error');
+        notifyUI('Error al guardar', 'No se pudo guardar el turno en la base de datos. ' + (error.message.includes('column') ? 'Faltan columnas en la BD.' : error.message), 'error');
     }
   };
   
@@ -1093,7 +1007,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setShiftTypes(prev => prev.map(t => t.id === type.id ? type : t));
       const { error } = await supabase.from('shift_types').update(type).eq('id', type.id);
       if (error) {
-          notifyUI('Error al guardar', 'No se pudo actualizar el turno: ' + error.message, 'error');
+          notifyUI('Error al guardar', 'No se pudo actualizar el turno: ' + (error.message.includes('column') ? 'Faltan columnas en la BD.' : error.message), 'error');
       } else {
           notifyUI('Turno Actualizado', 'El tipo de turno ha sido modificado.', 'success');
       }
@@ -1115,7 +1029,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
       addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, sendTestEmail, importDatabase, updateSystemMessage,
       addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType,
-      sendInternalMessage, markInternalMessageRead, deleteInternalMessage
+      sendInternalMessage, markInternalMessageRead, deleteInternalMessage,
+      fetchData
     }}>
       {children}
     </DataContext.Provider>
