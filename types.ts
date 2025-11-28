@@ -44,6 +44,7 @@ export interface InternalMessage {
   senderId: string;
   targetUserIds: string[]; // ['ALL'] or specific IDs
   readByUserIds: string[];
+  deletedByUserIds?: string[]; // Array of IDs who deleted this message
   createdAt: string;
 }
 

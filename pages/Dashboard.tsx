@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { RequestStatus, ShiftType } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Clock, CheckCircle, AlertCircle, Trash2, X, CalendarDays, Sun, Moon, ArrowRight, Mail } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Trash2, X, CalendarDays, Sun, Moon, ArrowRight, Mail, MessageSquare, ChevronRight, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
@@ -22,13 +22,20 @@ const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
 );
 
 const Dashboard = () => {
-  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts, shiftTypes, internalMessages, markInternalMessageRead } = useData();
+  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts, shiftTypes, internalMessages, markInternalMessageRead, deleteInternalMessage } = useData();
   
-  // Confirmation Modal State
+  // Confirmation Modal State (Requests)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   
-  // Message Modal State
+  // Confirmation Modal State (Messages)
+  const [confirmMsgDeleteId, setConfirmMsgDeleteId] = useState<string | null>(null);
+  
+  // Message Modal State (Auto Popup)
   const [unreadMsg, setUnreadMsg] = useState<any>(null);
+
+  // Inbox Modal State (Full View)
+  const [showInbox, setShowInbox] = useState(false);
+  const [selectedInboxMsgId, setSelectedInboxMsgId] = useState<string | null>(null);
 
   // Logic for stats
   const myRequests = requests.filter(r => r.userId === currentUser?.id);
@@ -87,22 +94,26 @@ const Dashboard = () => {
   const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444'];
 
   // --- INTERNAL MESSAGES LOGIC ---
+  const myMessages = internalMessages.filter(msg => {
+      const isTarget = msg.targetUserIds.includes('ALL') || msg.targetUserIds.includes(currentUser?.id || '');
+      const isDeleted = msg.deletedByUserIds?.includes(currentUser?.id || '');
+      return isTarget && !isDeleted;
+  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const unreadMessagesCount = myMessages.filter(m => !m.readByUserIds.includes(currentUser?.id || '')).length;
+  const latestMessage = myMessages[0];
+
+  // Auto-Popup for unread
   useEffect(() => {
       if (!currentUser) return;
-      
-      const unreadMessages = internalMessages.filter(msg => {
-          const isTarget = msg.targetUserIds.includes('ALL') || msg.targetUserIds.includes(currentUser.id);
-          const isRead = msg.readByUserIds.includes(currentUser.id);
-          return isTarget && !isRead;
-      });
-      
-      // If there are unread messages, show the first one
-      if (unreadMessages.length > 0) {
-          setUnreadMsg(unreadMessages[0]);
+      // Only show popup if there is a VERY recent unread message (or on first load logic if preferred)
+      const unread = myMessages.find(m => !m.readByUserIds.includes(currentUser.id));
+      if (unread && !showInbox) { // Don't popup if inbox is open
+          setUnreadMsg(unread);
       } else {
           setUnreadMsg(null);
       }
-  }, [internalMessages, currentUser]);
+  }, [internalMessages, currentUser, showInbox]);
 
   const handleCloseMessage = () => {
       if (unreadMsg && currentUser) {
@@ -111,8 +122,25 @@ const Dashboard = () => {
       }
   };
 
+  const handleInboxSelect = (msg: any) => {
+      setSelectedInboxMsgId(msg.id);
+      markInternalMessageRead(msg.id);
+  };
+
   const handleDeleteClick = (id: string) => {
       setConfirmDeleteId(id);
+  };
+
+  const handleDeleteMessage = (id: string) => {
+      setConfirmMsgDeleteId(id);
+  };
+
+  const executeMessageDelete = () => {
+      if (confirmMsgDeleteId) {
+          deleteInternalMessage(confirmMsgDeleteId);
+          if (selectedInboxMsgId === confirmMsgDeleteId) setSelectedInboxMsgId(null);
+          setConfirmMsgDeleteId(null);
+      }
   };
 
   const confirmDelete = () => {
@@ -121,6 +149,8 @@ const Dashboard = () => {
           setConfirmDeleteId(null);
       }
   };
+
+  const selectedInboxMsg = myMessages.find(m => m.id === selectedInboxMsgId);
 
   return (
     <div className="space-y-8">
@@ -160,46 +190,77 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-            {/* NEXT SHIFT CARD (NEW) */}
-            <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl shadow-lg p-6 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-10 -translate-y-10">
-                    <CalendarDays size={120} />
-                </div>
-                <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                    <div>
-                        <h3 className="text-lg font-bold mb-1 flex items-center">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* NEXT SHIFT CARD */}
+                <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl shadow-lg p-6 text-white relative overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-10 -translate-y-10">
+                        <CalendarDays size={120} />
+                    </div>
+                    <div className="relative z-10">
+                        <h3 className="text-lg font-bold mb-4 flex items-center">
                             <CalendarDays className="mr-2" size={20} /> Mis Turnos
                         </h3>
                         {nextShift ? (
-                             <div className="mt-4">
+                             <div>
                                 <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Próximo Turno</p>
-                                <div className="flex items-center space-x-4">
+                                <div className="flex items-center space-x-3">
                                     <span className="text-3xl font-bold">
                                         {new Date(nextShift.date + 'T12:00:00').getDate()}
                                     </span>
-                                    <div className="border-l border-slate-600 pl-4">
-                                        <p className="font-medium text-lg capitalize">{new Date(nextShift.date + 'T12:00:00').toLocaleString('es-ES', { month: 'long', weekday: 'long' })}</p>
-                                        <div className={`flex items-center text-sm font-bold mt-1 text-indigo-400`}>
-                                            <Clock size={16} className="mr-1.5" />
-                                            {nextShiftDef ? (
-                                                <span>
-                                                    {nextShiftDef.name.toUpperCase()} ({nextShiftDef.startTime}-{nextShiftDef.endTime}
-                                                    {nextShiftDef.startTime2 ? ` / ${nextShiftDef.startTime2}-${nextShiftDef.endTime2}` : ''})
-                                                </span>
-                                            ) : (
-                                                <span>{nextShift.shiftType === 'MORNING' ? 'MAÑANA' : nextShift.shiftType === 'AFTERNOON' ? 'TARDE' : 'TURNO'}</span>
-                                            )}
-                                        </div>
+                                    <div className="border-l border-slate-600 pl-3">
+                                        <p className="font-medium text-lg capitalize leading-tight">{new Date(nextShift.date + 'T12:00:00').toLocaleString('es-ES', { month: 'long', weekday: 'long' })}</p>
+                                        <p className={`text-sm font-bold text-indigo-400`}>
+                                            {nextShiftDef ? nextShiftDef.name : 'Turno Asignado'}
+                                        </p>
                                     </div>
                                 </div>
                              </div>
                         ) : (
-                            <p className="mt-4 text-slate-400 text-sm">No tienes turnos asignados próximamente.</p>
+                            <p className="text-slate-400 text-sm py-2">No tienes turnos asignados próximamente.</p>
                         )}
                     </div>
-                    <Link to="/calendar" className="mt-6 sm:mt-0 px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg text-sm font-medium transition-colors flex items-center group">
-                        Ver Calendario Completo <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                    <Link to="/calendar" className="mt-4 relative z-10 w-full text-center px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg text-sm font-medium transition-colors">
+                        Ver Calendario
                     </Link>
+                </div>
+
+                {/* MY MESSAGES CARD */}
+                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl shadow-lg p-6 text-white relative overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-10 -translate-y-10">
+                        <Mail size={120} />
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="text-lg font-bold flex items-center">
+                                <MessageSquare className="mr-2" size={20} /> Mensajes
+                            </h3>
+                            {unreadMessagesCount > 0 && (
+                                <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">
+                                    {unreadMessagesCount} nuevos
+                                </span>
+                            )}
+                        </div>
+                        
+                        {latestMessage ? (
+                             <div>
+                                <p className="text-emerald-100 text-xs uppercase font-bold tracking-wider mb-1">Último Recibido</p>
+                                <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm border border-white/10">
+                                    <p className="font-bold text-sm truncate">{latestMessage.subject}</p>
+                                    <p className="text-xs text-emerald-100 mt-1 truncate opacity-80">{latestMessage.body}</p>
+                                </div>
+                                <p className="text-xs text-emerald-200 mt-2 text-right">
+                                    {new Date(latestMessage.createdAt).toLocaleDateString()}
+                                </p>
+                             </div>
+                        ) : (
+                            <div className="py-4 text-emerald-100 text-sm text-center">
+                                No tienes mensajes en tu buzón.
+                            </div>
+                        )}
+                    </div>
+                    <button onClick={() => setShowInbox(true)} className="mt-4 relative z-10 w-full text-center px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg text-sm font-medium transition-colors flex items-center justify-center group">
+                        Buzón de Entrada <ArrowRight size={16} className="ml-2 group-hover:translate-x-1 transition-transform"/>
+                    </button>
                 </div>
             </div>
 
@@ -285,7 +346,100 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* CUSTOM CONFIRMATION MODAL */}
+      {/* INBOX MODAL (FULL VIEW) */}
+      {showInbox && (
+          <div className="fixed inset-0 bg-black/50 z-[90] flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] flex overflow-hidden animate-in zoom-in duration-200">
+                  {/* Left Sidebar: List */}
+                  <div className="w-1/3 border-r border-slate-200 flex flex-col bg-slate-50">
+                      <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-white">
+                          <h3 className="font-bold text-slate-800 flex items-center">
+                              <Mail className="mr-2 text-primary" size={20} /> Buzón
+                          </h3>
+                          <span className="text-xs font-bold text-slate-500">{myMessages.length} mensajes</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                          {myMessages.length === 0 ? (
+                              <p className="p-8 text-center text-slate-400 text-sm">Buzón vacío.</p>
+                          ) : (
+                              myMessages.map(msg => {
+                                  const isRead = msg.readByUserIds.includes(currentUser?.id || '');
+                                  const isSelected = msg.id === selectedInboxMsgId;
+                                  return (
+                                      <div 
+                                          key={msg.id} 
+                                          onClick={() => handleInboxSelect(msg)}
+                                          className={`p-4 border-b border-slate-200 cursor-pointer transition-colors relative group ${isSelected ? 'bg-blue-50 border-l-4 border-l-primary' : 'hover:bg-white'} ${!isRead ? 'bg-white font-semibold' : 'text-slate-500'}`}
+                                      >
+                                          <div className="flex justify-between mb-1">
+                                              <span className={`text-sm ${!isRead ? 'text-slate-800' : ''}`}>Admin</span>
+                                              <span className="text-xs text-slate-400">{new Date(msg.createdAt).toLocaleDateString()}</span>
+                                          </div>
+                                          <p className={`text-sm truncate pr-6 ${!isRead ? 'text-slate-900' : ''}`}>{msg.subject}</p>
+                                          <p className="text-xs text-slate-400 truncate mt-1">{msg.body}</p>
+                                          {!isRead && <span className="inline-block w-2 h-2 bg-primary rounded-full mt-2"></span>}
+                                          
+                                          <button 
+                                              onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }}
+                                              className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              title="Borrar mensaje"
+                                          >
+                                              <Trash2 size={16} />
+                                          </button>
+                                      </div>
+                                  )
+                              })
+                          )}
+                      </div>
+                  </div>
+
+                  {/* Right Content: Message Detail */}
+                  <div className="flex-1 flex flex-col bg-white">
+                      {selectedInboxMsg ? (
+                          <>
+                              <div className="p-6 border-b border-slate-100 flex justify-between items-start">
+                                  <div>
+                                      <h2 className="text-xl font-bold text-slate-800 mb-2">{selectedInboxMsg.subject}</h2>
+                                      <div className="flex items-center text-sm text-slate-500">
+                                          <span className="bg-slate-100 px-2 py-1 rounded mr-2">De: Administración</span>
+                                          <span>{new Date(selectedInboxMsg.createdAt).toLocaleString()}</span>
+                                      </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                      <button onClick={() => handleDeleteMessage(selectedInboxMsg.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Borrar">
+                                          <Trash2 size={20} />
+                                      </button>
+                                      <button onClick={() => setShowInbox(false)} className="text-slate-400 hover:text-slate-600">
+                                          <X size={24} />
+                                      </button>
+                                  </div>
+                              </div>
+                              <div className="p-8 flex-1 overflow-y-auto">
+                                  <div className="prose max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                      {selectedInboxMsg.body}
+                                  </div>
+                              </div>
+                              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                                  <button onClick={() => setSelectedInboxMsgId(null)} className="text-slate-500 hover:text-slate-700 text-sm font-medium mr-4">
+                                      Cerrar Mensaje
+                                  </button>
+                              </div>
+                          </>
+                      ) : (
+                          <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
+                              <MessageSquare size={64} className="mb-4 opacity-50" />
+                              <p className="text-lg font-medium">Selecciona un mensaje para leerlo</p>
+                              <button onClick={() => setShowInbox(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+                                  <X size={24} />
+                              </button>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* CONFIRMATION MODAL (REQUESTS) */}
       {confirmDeleteId && (
           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
               <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in duration-200">
@@ -315,7 +469,36 @@ const Dashboard = () => {
           </div>
       )}
 
-      {/* INTERNAL MESSAGE MODAL */}
+      {/* CONFIRMATION MODAL (MESSAGES) */}
+      {confirmMsgDeleteId && (
+          <div className="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full animate-in zoom-in duration-200">
+                  <div className="flex items-center text-red-600 mb-4">
+                      <AlertCircle className="mr-2" />
+                      <h3 className="font-bold text-lg">Eliminar Mensaje</h3>
+                  </div>
+                  <p className="text-slate-600 text-sm mb-6">
+                      ¿Estás seguro de que quieres eliminar este mensaje de tu buzón?
+                  </p>
+                  <div className="flex justify-end space-x-3">
+                      <button 
+                          onClick={() => setConfirmMsgDeleteId(null)}
+                          className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg font-medium text-sm"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={executeMessageDelete}
+                          className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-medium text-sm"
+                      >
+                          Eliminar
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* INTERNAL MESSAGE POPUP (AUTO) */}
       {unreadMsg && (
           <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in slide-in-from-bottom-10 duration-300 overflow-hidden">
@@ -328,16 +511,25 @@ const Dashboard = () => {
                   </div>
                   <div className="p-6">
                       <h4 className="font-bold text-slate-800 text-lg mb-2">{unreadMsg.subject}</h4>
-                      <div className="text-slate-600 text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
-                          {unreadMsg.body.split('\n').map((line: string, i: number) => (
-                              <p key={i} className="mb-2 last:mb-0">{line}</p>
-                          ))}
+                      <div className="text-slate-600 text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100 max-h-60 overflow-y-auto whitespace-pre-wrap">
+                          {unreadMsg.body}
                       </div>
                       <p className="text-xs text-slate-400 mt-4 text-right">
-                          Recibido el {new Date(unreadMsg.createdAt).toLocaleDateString()} a las {new Date(unreadMsg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          Recibido el {new Date(unreadMsg.createdAt).toLocaleDateString()}
                       </p>
                   </div>
-                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                      <button 
+                          onClick={() => {
+                              markInternalMessageRead(unreadMsg.id);
+                              setShowInbox(true);
+                              setSelectedInboxMsgId(unreadMsg.id);
+                              setUnreadMsg(null);
+                          }}
+                          className="text-slate-600 hover:text-slate-800 text-sm font-medium px-3"
+                      >
+                          Ver en Buzón
+                      </button>
                       <button 
                           onClick={handleCloseMessage}
                           className="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-700 transition-colors shadow-lg"

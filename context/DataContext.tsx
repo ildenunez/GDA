@@ -75,6 +75,7 @@ interface DataContextType {
   // Internal Messaging
   sendInternalMessage: (subject: string, body: string, targetUserIds: string[]) => void;
   markInternalMessageRead: (messageId: string) => void;
+  deleteInternalMessage: (messageId: string) => void;
   
   // Data Management
   importDatabase: (data: any) => void;
@@ -523,6 +524,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           senderId: currentUser.id,
           targetUserIds,
           readByUserIds: [],
+          deletedByUserIds: [],
           createdAt: new Date().toISOString()
       };
       
@@ -546,6 +548,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const updatedReadBy = [...msg.readByUserIds, currentUser.id];
           setInternalMessages(prev => prev.map(m => m.id === messageId ? { ...m, readByUserIds: updatedReadBy } : m));
           await supabase.from('internal_messages').update({ readByUserIds: updatedReadBy }).eq('id', messageId);
+      }
+  };
+
+  const deleteInternalMessage = async (messageId: string) => {
+      if (!currentUser) return;
+      const msg = internalMessages.find(m => m.id === messageId);
+      if (!msg) return;
+
+      const currentDeleted = msg.deletedByUserIds || [];
+      if (!currentDeleted.includes(currentUser.id)) {
+          const updatedDeleted = [...currentDeleted, currentUser.id];
+          
+          // Optimistic update
+          setInternalMessages(prev => prev.map(m => m.id === messageId ? { ...m, deletedByUserIds: updatedDeleted } : m));
+          
+          const { error } = await supabase.from('internal_messages').update({ deletedByUserIds: updatedDeleted }).eq('id', messageId);
+          
+          if (error) {
+              console.error("Error deleting message:", error);
+              notifyUI('Error', 'No se pudo eliminar el mensaje.', 'error');
+              // Rollback
+              setInternalMessages(prev => prev.map(m => m.id === messageId ? { ...m, deletedByUserIds: currentDeleted } : m));
+          } else {
+              notifyUI('Mensaje Eliminado', 'El mensaje se ha movido a la papelera.', 'success');
+          }
       }
   };
 
@@ -1059,7 +1086,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
       addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, sendTestEmail, importDatabase, updateSystemMessage,
       addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType,
-      sendInternalMessage, markInternalMessageRead
+      sendInternalMessage, markInternalMessageRead, deleteInternalMessage
     }}>
       {children}
     </DataContext.Provider>
