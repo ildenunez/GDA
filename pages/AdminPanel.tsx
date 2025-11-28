@@ -695,9 +695,16 @@ const AdminPanel = () => {
                                     <label className="text-xs font-bold text-slate-500">Color</label>
                                     <select className="w-full border rounded p-2 text-sm" value={newShiftType.color} onChange={e => setNewShiftType({...newShiftType, color: e.target.value})}>
                                         <option value="bg-blue-100 text-blue-800 border-blue-300">Azul</option>
-                                        <option value="bg-amber-100 text-amber-800 border-amber-300">Naranja (Mañana)</option>
-                                        <option value="bg-indigo-100 text-indigo-800 border-indigo-300">Indigo (Tarde)</option>
-                                        <option value="bg-slate-800 text-slate-200 border-slate-600">Oscuro (Noche)</option>
+                                        <option value="bg-amber-100 text-amber-800 border-amber-300">Naranja</option>
+                                        <option value="bg-indigo-100 text-indigo-800 border-indigo-300">Indigo</option>
+                                        <option value="bg-slate-800 text-slate-200 border-slate-600">Oscuro</option>
+                                        <option value="bg-emerald-100 text-emerald-800 border-emerald-300">Verde</option>
+                                        <option value="bg-rose-100 text-rose-800 border-rose-300">Rojo</option>
+                                        <option value="bg-purple-100 text-purple-800 border-purple-300">Morado</option>
+                                        <option value="bg-pink-100 text-pink-800 border-pink-300">Rosa</option>
+                                        <option value="bg-teal-100 text-teal-800 border-teal-300">Turquesa</option>
+                                        <option value="bg-yellow-100 text-yellow-800 border-yellow-300">Amarillo</option>
+                                        <option value="bg-gray-200 text-gray-800 border-gray-400">Gris</option>
                                     </select>
                                 </div>
                             </div>
