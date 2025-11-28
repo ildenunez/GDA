@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition, SystemMessage } from '../types';
+import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition, SystemMessage, InternalMessage } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 // Helper generators
@@ -31,6 +31,7 @@ interface DataContextType {
   emailTemplates: EmailTemplate[];
   shifts: Shift[];
   systemMessage: SystemMessage | null;
+  internalMessages: InternalMessage[];
   emailConfig: EmailConfig;
   smtpConfig: SMTPConfig;
   isLoading: boolean;
@@ -70,6 +71,10 @@ interface DataContextType {
   saveSmtpConfig: (config: SMTPConfig) => void;
   sendTestEmail: (toEmail: string) => void;
   updateSystemMessage: (msg: SystemMessage) => void;
+  
+  // Internal Messaging
+  sendInternalMessage: (subject: string, body: string, targetUserIds: string[]) => void;
+  markInternalMessageRead: (messageId: string) => void;
   
   // Data Management
   importDatabase: (data: any) => void;
@@ -161,6 +166,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [systemMessage, setSystemMessage] = useState<SystemMessage | null>(null);
+  const [internalMessages, setInternalMessages] = useState<InternalMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Email Configuration
@@ -198,6 +204,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: templData } = await supabase.from('email_templates').select('*');
         const { data: shiftsData } = await supabase.from('shifts').select('*');
         const { data: msgData } = await supabase.from('system_messages').select('*').eq('id', 'global_msg').single();
+        const { data: intMsgData } = await supabase.from('internal_messages').select('*');
 
         if ((!usersData || usersData.length === 0) && (!deptsData || deptsData.length === 0)) {
             console.log("Database empty. Seeding initial data...");
@@ -221,6 +228,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (notifData) setNotifications(notifData);
         if (shiftsData) setShifts(shiftsData);
         if (msgData) setSystemMessage(msgData);
+        if (intMsgData) setInternalMessages(intMsgData);
         
         if (!templData || templData.length === 0) {
              await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
@@ -244,7 +252,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                      }
 
                      // 2. Check Body Content (Simple check: if it's too short or missing keywords like 'Fechas', replace with seed)
-                     // This ensures old simple templates get updated to detailed ones automatically
                      if (t.body && seed.body.length > t.body.length + 20) {
                          updatedTemplate.body = seed.body;
                          needsUpdate = true;
@@ -326,6 +333,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         supabase.channel('public:email_templates').on('postgres_changes', { event: '*', schema: 'public', table: 'email_templates' }, () => fetchData()).subscribe(),
         supabase.channel('public:shifts').on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, () => fetchData()).subscribe(),
         supabase.channel('public:system_messages').on('postgres_changes', { event: '*', schema: 'public', table: 'system_messages' }, () => fetchData()).subscribe(),
+        supabase.channel('public:internal_messages').on('postgres_changes', { event: '*', schema: 'public', table: 'internal_messages' }, () => fetchData()).subscribe(),
     ];
     return () => { channels.forEach(ch => supabase.removeChannel(ch)); };
   }, []);
@@ -503,6 +511,42 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSystemMessage(msg);
       await supabase.from('system_messages').upsert(msg);
       notifyUI('Mensaje Actualizado', 'El mensaje global se ha actualizado.', 'success');
+  };
+
+  const sendInternalMessage = async (subject: string, body: string, targetUserIds: string[]) => {
+      if (!currentUser) return;
+      
+      const newMessage: InternalMessage = {
+          id: generateId(),
+          subject,
+          body,
+          senderId: currentUser.id,
+          targetUserIds,
+          readByUserIds: [],
+          createdAt: new Date().toISOString()
+      };
+      
+      setInternalMessages(prev => [newMessage, ...prev]);
+      const { error } = await supabase.from('internal_messages').insert(newMessage);
+      
+      if (error) {
+          console.error("Error sending internal message:", error);
+          notifyUI('Error', 'No se pudo enviar el mensaje interno.', 'error');
+      } else {
+          notifyUI('Mensaje Enviado', 'El mensaje interno ha sido enviado.', 'success');
+      }
+  };
+
+  const markInternalMessageRead = async (messageId: string) => {
+      if (!currentUser) return;
+      const msg = internalMessages.find(m => m.id === messageId);
+      if (!msg) return;
+      
+      if (!msg.readByUserIds.includes(currentUser.id)) {
+          const updatedReadBy = [...msg.readByUserIds, currentUser.id];
+          setInternalMessages(prev => prev.map(m => m.id === messageId ? { ...m, readByUserIds: updatedReadBy } : m));
+          await supabase.from('internal_messages').update({ readByUserIds: updatedReadBy }).eq('id', messageId);
+      }
   };
 
   const sendNotification = async (userId: string, title: string, message: string, type: NotificationType) => {
@@ -1010,11 +1054,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <DataContext.Provider value={{
-      currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, systemMessage, isLoading,
+      currentUser, users, departments, absenceTypes, shiftTypes, requests, overtime, notifications, emailTemplates, emailConfig, smtpConfig, shifts, systemMessage, isLoading, internalMessages,
       login, logout, updateUser, adjustUserVacation, addUser, deleteUser, addRequest, updateRequestStatus, deleteRequest, addOvertime, updateOvertimeStatus, deleteOvertime, requestRedemption, 
       sendNotification, markNotificationRead, markAllNotificationsRead, updateAbsenceType, createAbsenceType, deleteAbsenceType,
       addDepartment, updateDepartment, deleteDepartment, updateEmailTemplate, saveEmailConfig, saveSmtpConfig, sendTestEmail, importDatabase, updateSystemMessage,
-      addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType
+      addShift, deleteShift, createShiftType, updateShiftType, deleteShiftType,
+      sendInternalMessage, markInternalMessageRead
     }}>
       {children}
     </DataContext.Provider>

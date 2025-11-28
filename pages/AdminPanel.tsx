@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock, FileText, LayoutList, Megaphone, Send } from 'lucide-react';
+import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock, FileText, LayoutList, Megaphone, Send, MessageSquare } from 'lucide-react';
 import { Role, RequestStatus, AbsenceType, Department, User, OvertimeRecord, RedemptionType, EmailTemplate, ShiftType, ShiftTypeDefinition } from '../types';
 
 const AdminPanel = () => {
@@ -10,7 +10,8 @@ const AdminPanel = () => {
       departments, addDepartment, updateDepartment, deleteDepartment,
       users, updateUser, adjustUserVacation, addUser, deleteUser, requests, addRequest, deleteRequest, overtime, addOvertime, deleteOvertime, requestRedemption,
       notifications, importDatabase, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig, sendTestEmail, systemMessage, updateSystemMessage,
-      shifts, addShift, deleteShift, shiftTypes, createShiftType, updateShiftType, deleteShiftType
+      shifts, addShift, deleteShift, shiftTypes, createShiftType, updateShiftType, deleteShiftType,
+      sendInternalMessage
   } = useData();
   
   const [activeTab, setActiveTab] = useState<'config' | 'users' | 'comms' | 'shifts'>('config');
@@ -42,6 +43,14 @@ const AdminPanel = () => {
       text: systemMessage?.text || '',
       active: systemMessage?.active || false,
       color: systemMessage?.color || 'bg-blue-100 text-blue-800 border-blue-200'
+  });
+  
+  // Internal Messaging State
+  const [internalMsgForm, setInternalMsgForm] = useState({
+      subject: '',
+      body: '',
+      target: 'ALL', // 'ALL' or 'SELECT'
+      selectedUserIds: [] as string[]
   });
 
   // --- SHIFTS TAB STATES ---
@@ -214,6 +223,15 @@ const AdminPanel = () => {
           active: sysMsgForm.active,
           color: sysMsgForm.color
       });
+  };
+  
+  const handleSendInternalMessage = (e: React.FormEvent) => {
+      e.preventDefault();
+      const targets = internalMsgForm.target === 'ALL' ? ['ALL'] : internalMsgForm.selectedUserIds;
+      if (targets.length === 0) return;
+      
+      sendInternalMessage(internalMsgForm.subject, internalMsgForm.body, targets);
+      setInternalMsgForm({ subject: '', body: '', target: 'ALL', selectedUserIds: [] });
   };
 
   const handleExportDB = () => {
@@ -815,6 +833,50 @@ const AdminPanel = () => {
                     </form>
                </div>
                
+               {/* INTERNAL MESSAGING SYSTEM (NEW) */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                   <h3 className="font-bold text-slate-800 mb-4 flex items-center"><MessageSquare className="mr-2 text-emerald-600" size={20} /> Mensajería Interna</h3>
+                   <form onSubmit={handleSendInternalMessage} className="space-y-4">
+                       <div>
+                           <label className="text-xs font-bold text-slate-500 block mb-1">Asunto</label>
+                           <input required type="text" className="w-full border rounded p-2 text-sm" value={internalMsgForm.subject} onChange={e => setInternalMsgForm({...internalMsgForm, subject: e.target.value})} />
+                       </div>
+                       <div>
+                           <label className="text-xs font-bold text-slate-500 block mb-1">Mensaje</label>
+                           <textarea required className="w-full border rounded p-2 text-sm h-24" value={internalMsgForm.body} onChange={e => setInternalMsgForm({...internalMsgForm, body: e.target.value})}></textarea>
+                       </div>
+                       <div>
+                           <label className="text-xs font-bold text-slate-500 block mb-2">Destinatarios</label>
+                           <div className="flex items-center gap-4 mb-2">
+                               <label className="flex items-center text-sm font-medium"><input type="radio" className="mr-2" name="target" checked={internalMsgForm.target === 'ALL'} onChange={() => setInternalMsgForm({...internalMsgForm, target: 'ALL'})} /> Todos los empleados</label>
+                               <label className="flex items-center text-sm font-medium"><input type="radio" className="mr-2" name="target" checked={internalMsgForm.target === 'SELECT'} onChange={() => setInternalMsgForm({...internalMsgForm, target: 'SELECT'})} /> Selección manual</label>
+                           </div>
+                           
+                           {internalMsgForm.target === 'SELECT' && (
+                               <div className="border rounded-lg p-2 max-h-40 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-2 bg-slate-50">
+                                   {users.map(u => (
+                                       <label key={u.id} className="flex items-center text-xs p-1 hover:bg-slate-100 rounded cursor-pointer">
+                                           <input type="checkbox" className="mr-2" 
+                                               checked={internalMsgForm.selectedUserIds.includes(u.id)}
+                                               onChange={e => {
+                                                   if (e.target.checked) setInternalMsgForm({...internalMsgForm, selectedUserIds: [...internalMsgForm.selectedUserIds, u.id]});
+                                                   else setInternalMsgForm({...internalMsgForm, selectedUserIds: internalMsgForm.selectedUserIds.filter(id => id !== u.id)});
+                                               }}
+                                           />
+                                           {u.name}
+                                       </label>
+                                   ))}
+                               </div>
+                           )}
+                       </div>
+                       <div className="flex justify-end">
+                           <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center">
+                               <Send size={16} className="mr-2" /> Enviar Mensaje
+                           </button>
+                       </div>
+                   </form>
+               </div>
+
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Server className="mr-2 text-blue-600" size={20} /> Configuración SMTP</h3>

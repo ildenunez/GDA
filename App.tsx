@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { DataProvider, useData } from './context/DataContext';
-import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, ChevronRight, UserCircle, CalendarDays, CheckCheck, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Settings, Bell, Menu, LogOut, ChevronRight, UserCircle, CalendarDays, CheckCheck, Megaphone, BookOpen } from 'lucide-react';
 import { Role, RequestStatus } from './types';
 
 // Pages
@@ -13,6 +13,7 @@ import AdminPanel from './pages/AdminPanel';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import CalendarView from './pages/CalendarView';
+import HelpManual from './pages/HelpManual';
 
 const LOGO_URL = "https://img.evbuc.com/https%3A%2F%2Fcdn.evbuc.com%2Fimages%2F677236879%2F73808960223%2F1%2Foriginal.20240118-071537?w=284&auto=format%2Ccompress&q=75&sharp=10&rect=0%2C0%2C284%2C284&s=138022d792466dd1773752da55468b5b";
 
@@ -80,7 +81,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}
-      <aside className={`fixed z-30 inset-y-0 left-0 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed z-30 inset-y-0 left-0 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} print:hidden`}>
         <div className="h-full flex flex-col">
           <div className="h-20 flex items-center px-6 border-b border-slate-100">
             <img src={LOGO_URL} alt="Logo" className="w-10 h-10 rounded-lg mr-3 object-contain" />
@@ -102,6 +103,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
             )}
             
             <div className="pt-4 border-t border-slate-100 mt-4">
+                 <SidebarItem to="/help" icon={BookOpen} label="Ayuda" active={location.pathname === '/help'} onClick={closeMenu} />
                  <SidebarItem to="/profile" icon={UserCircle} label="Mi Perfil" active={location.pathname === '/profile'} onClick={closeMenu} />
             </div>
           </nav>
@@ -125,7 +127,7 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {/* Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20">
+        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-20 print:hidden">
           <div className="px-6 py-4 flex items-center justify-between">
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100">
               <Menu size={24} />
@@ -216,8 +218,8 @@ const Layout = ({ children }: { children?: React.ReactNode }) => {
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth print:overflow-visible print:h-auto">
+          <div className="max-w-7xl mx-auto print:max-w-none">
             {children}
           </div>
         </main>
@@ -254,11 +256,11 @@ const App = () => {
           <Route path="/myspace" element={<ProtectedRoute><Layout><MySpace /></Layout></ProtectedRoute>} />
           <Route path="/team" element={<ProtectedRoute allowedRoles={[Role.SUPERVISOR, Role.ADMIN]}><Layout><TeamManagement /></Layout></ProtectedRoute>} />
           
-          {/* UPDATED: Calendar accessible to all authenticated roles */}
           <Route path="/calendar" element={<ProtectedRoute allowedRoles={[Role.WORKER, Role.SUPERVISOR, Role.ADMIN]}><Layout><CalendarView /></Layout></ProtectedRoute>} />
           
           <Route path="/admin" element={<ProtectedRoute allowedRoles={[Role.ADMIN]}><Layout><AdminPanel /></Layout></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
+          <Route path="/help" element={<ProtectedRoute><Layout><HelpManual /></Layout></ProtectedRoute>} />
         </Routes>
       </Router>
     </DataProvider>

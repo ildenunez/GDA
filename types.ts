@@ -37,6 +37,16 @@ export interface SystemMessage {
   color: string; // Tailwind classes
 }
 
+export interface InternalMessage {
+  id: string;
+  subject: string;
+  body: string;
+  senderId: string;
+  targetUserIds: string[]; // ['ALL'] or specific IDs
+  readByUserIds: string[];
+  createdAt: string;
+}
+
 export interface VacationLogEntry {
   id: string;
   date: string;

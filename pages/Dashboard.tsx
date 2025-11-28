@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { RequestStatus, ShiftType } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Clock, CheckCircle, AlertCircle, Trash2, X, CalendarDays, Sun, Moon, ArrowRight } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, Trash2, X, CalendarDays, Sun, Moon, ArrowRight, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
@@ -22,10 +22,13 @@ const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
 );
 
 const Dashboard = () => {
-  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts, shiftTypes } = useData();
+  const { currentUser, requests, overtime, absenceTypes, deleteRequest, shifts, shiftTypes, internalMessages, markInternalMessageRead } = useData();
   
   // Confirmation Modal State
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  
+  // Message Modal State
+  const [unreadMsg, setUnreadMsg] = useState<any>(null);
 
   // Logic for stats
   const myRequests = requests.filter(r => r.userId === currentUser?.id);
@@ -82,6 +85,31 @@ const Dashboard = () => {
   })).filter(item => item.value > 0);
 
   const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444'];
+
+  // --- INTERNAL MESSAGES LOGIC ---
+  useEffect(() => {
+      if (!currentUser) return;
+      
+      const unreadMessages = internalMessages.filter(msg => {
+          const isTarget = msg.targetUserIds.includes('ALL') || msg.targetUserIds.includes(currentUser.id);
+          const isRead = msg.readByUserIds.includes(currentUser.id);
+          return isTarget && !isRead;
+      });
+      
+      // If there are unread messages, show the first one
+      if (unreadMessages.length > 0) {
+          setUnreadMsg(unreadMessages[0]);
+      } else {
+          setUnreadMsg(null);
+      }
+  }, [internalMessages, currentUser]);
+
+  const handleCloseMessage = () => {
+      if (unreadMsg && currentUser) {
+          markInternalMessageRead(unreadMsg.id);
+          setUnreadMsg(null);
+      }
+  };
 
   const handleDeleteClick = (id: string) => {
       setConfirmDeleteId(id);
@@ -281,6 +309,40 @@ const Dashboard = () => {
                           className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg font-medium text-sm"
                       >
                           Confirmar Eliminar
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* INTERNAL MESSAGE MODAL */}
+      {unreadMsg && (
+          <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in slide-in-from-bottom-10 duration-300 overflow-hidden">
+                  <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 flex items-center">
+                      <Mail className="text-white mr-3" size={24} />
+                      <div>
+                          <h3 className="text-white font-bold text-lg">Mensaje Importante</h3>
+                          <p className="text-emerald-100 text-xs">Comunicación interna</p>
+                      </div>
+                  </div>
+                  <div className="p-6">
+                      <h4 className="font-bold text-slate-800 text-lg mb-2">{unreadMsg.subject}</h4>
+                      <div className="text-slate-600 text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
+                          {unreadMsg.body.split('\n').map((line: string, i: number) => (
+                              <p key={i} className="mb-2 last:mb-0">{line}</p>
+                          ))}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-4 text-right">
+                          Recibido el {new Date(unreadMsg.createdAt).toLocaleDateString()} a las {new Date(unreadMsg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </p>
+                  </div>
+                  <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                      <button 
+                          onClick={handleCloseMessage}
+                          className="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-700 transition-colors shadow-lg"
+                      >
+                          Entendido
                       </button>
                   </div>
               </div>
