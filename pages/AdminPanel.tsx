@@ -1273,6 +1273,69 @@ const AdminPanel = () => {
               </div>
           </div>
       )}
+
+       {/* Create User Modal */}
+       {showCreateUserModal && (
+           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+               <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+                   <div className="flex justify-between items-center mb-4">
+                       <h3 className="font-bold text-lg text-slate-800">Nuevo Usuario</h3>
+                       <button onClick={() => setShowCreateUserModal(false)}><X className="text-slate-400 hover:text-slate-600" /></button>
+                   </div>
+                   <form onSubmit={handleCreateUser} className="space-y-4">
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Nombre</label>
+                           <input required type="text" className="w-full border rounded p-2 text-sm" value={newUserForm.name} onChange={e => setNewUserForm({...newUserForm, name: e.target.value})} placeholder="Nombre Apellido" />
+                       </div>
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Email</label>
+                           <input required type="email" className="w-full border rounded p-2 text-sm" value={newUserForm.email} onChange={e => setNewUserForm({...newUserForm, email: e.target.value})} placeholder="usuario@empresa.com" />
+                       </div>
+                       <div className="grid grid-cols-2 gap-4">
+                           <div>
+                               <label className="block text-xs font-bold text-slate-500 mb-1">Rol</label>
+                               <select className="w-full border rounded p-2 text-sm" value={newUserForm.role} onChange={e => setNewUserForm({...newUserForm, role: e.target.value as Role})}>
+                                   <option value={Role.WORKER}>Trabajador</option>
+                                   <option value={Role.SUPERVISOR}>Supervisor</option>
+                                   <option value={Role.ADMIN}>Administrador</option>
+                               </select>
+                           </div>
+                           <div>
+                               <label className="block text-xs font-bold text-slate-500 mb-1">Departamento</label>
+                               <select className="w-full border rounded p-2 text-sm" value={newUserForm.departmentId} onChange={e => setNewUserForm({...newUserForm, departmentId: e.target.value})}>
+                                   <option value="">Seleccionar...</option>
+                                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                               </select>
+                           </div>
+                       </div>
+                       
+                       <div className="pt-2 border-t border-slate-100">
+                           <p className="text-xs font-bold text-slate-800 mb-2">Saldos Iniciales (Opcional)</p>
+                           <div className="grid grid-cols-2 gap-4">
+                               <div>
+                                   <label className="block text-xs text-slate-500 mb-1">Vacaciones (Días)</label>
+                                   <input type="number" className="w-full border rounded p-2 text-sm" value={newUserForm.initialVacation} onChange={e => setNewUserForm({...newUserForm, initialVacation: Number(e.target.value)})} placeholder="0" />
+                               </div>
+                               <div>
+                                   <label className="block text-xs text-slate-500 mb-1">Horas Extra (Saldo)</label>
+                                   <input type="number" className="w-full border rounded p-2 text-sm" value={newUserForm.initialOvertime} onChange={e => setNewUserForm({...newUserForm, initialOvertime: Number(e.target.value)})} placeholder="0" />
+                               </div>
+                           </div>
+                       </div>
+
+                       <div>
+                           <label className="block text-xs font-bold text-slate-500 mb-1">Color Calendario</label>
+                           <div className="flex gap-2 items-center">
+                               <input type="color" className="w-8 h-8 rounded cursor-pointer border-0 p-0" value={newUserForm.calendarColor} onChange={e => setNewUserForm({...newUserForm, calendarColor: e.target.value})} />
+                               <span className="text-xs text-slate-400">Color distintivo para turnos</span>
+                           </div>
+                       </div>
+
+                       <button type="submit" className="w-full bg-primary text-white py-2 rounded-lg font-bold hover:bg-primary/90">Crear Usuario</button>
+                   </form>
+               </div>
+           </div>
+       )}
     </div>
   );
 };
