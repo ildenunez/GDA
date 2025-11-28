@@ -1,5 +1,6 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftType, ShiftTypeDefinition, SystemMessage, InternalMessage } from '../types';
+import { User, Department, AbsenceType, AbsenceRequest, OvertimeRecord, Notification, Role, RequestStatus, NotificationType, RedemptionType, VacationLogEntry, EmailTemplate, Shift, ShiftTypeDefinition, SystemMessage, InternalMessage } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 // Helper generators
@@ -195,7 +196,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const fetchData = async () => {
     setIsLoading(true);
     try {
-        const { data: usersData } = await supabase.from('users').select('*');
+        const { data: usersData, error: usersError } = await supabase.from('users').select('*');
+        if (usersError) throw usersError;
+
         const { data: deptsData } = await supabase.from('departments').select('*');
         const { data: typesData } = await supabase.from('absence_types').select('*');
         const { data: shiftTypesData } = await supabase.from('shift_types').select('*');
@@ -207,8 +210,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: msgData } = await supabase.from('system_messages').select('*').eq('id', 'global_msg').single();
         const { data: intMsgData } = await supabase.from('internal_messages').select('*');
 
-        if ((!usersData || usersData.length === 0) && (!deptsData || deptsData.length === 0)) {
-            console.log("Database empty. Seeding initial data...");
+        // Only seed if fetch was SUCCESSFUL but returned NO data
+        // This prevents overwriting data if connection fails (usersData would be null/undefined on error, but handled by catch)
+        if (usersData && usersData.length === 0 && deptsData && deptsData.length === 0) {
+            console.log("Database looks empty. Seeding initial data...");
             await seedDatabase();
             return; 
         }
@@ -217,11 +222,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (deptsData) setDepartments(deptsData);
         if (typesData) setAbsenceTypes(typesData);
         
-        if (!shiftTypesData || shiftTypesData.length === 0) {
+        // CRITICAL FIX: Handle shiftTypes carefully. 
+        // If data exists, use it. If data is empty array (meaning fetch success but table empty), seed it.
+        // If data is null (fetch error), do NOTHING (don't overwrite UI with seed data, let user know there's an error)
+        if (shiftTypesData && shiftTypesData.length > 0) {
+            setShiftTypes(shiftTypesData);
+        } else if (shiftTypesData && shiftTypesData.length === 0) {
+            // Only seed if we successfully connected and it was truly empty
+            console.log("Shift types table empty, seeding defaults...");
             await supabase.from('shift_types').insert(SEED_SHIFT_TYPES);
             setShiftTypes(SEED_SHIFT_TYPES);
-        } else {
-            setShiftTypes(shiftTypesData);
         }
         
         if (reqsData) setRequests(reqsData);
@@ -232,7 +242,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (intMsgData) setInternalMessages(intMsgData);
         
         if (!templData || templData.length === 0) {
-             await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES);
+             if (templData) await supabase.from('email_templates').insert(SEED_EMAIL_TEMPLATES); // Only insert if fetch success
              setEmailTemplates(SEED_EMAIL_TEMPLATES);
         } else {
              // AUTO-PATCH: Check for templates with missing recipients OR new templates OR outdated bodies
@@ -294,8 +304,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
              }
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error fetching data from Supabase:", error);
+        notifyUI('Error de Conexión', 'No se pudieron cargar los datos. Revisa tu conexión. ' + (error.message || ''), 'error');
+        // Do NOT seed on error to prevent data loss or duplicate fears
     } finally {
         setIsLoading(false);
     }
@@ -533,7 +545,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       if (error) {
           console.error("Error sending internal message:", error);
-          notifyUI('Error', 'No se pudo enviar el mensaje interno.', 'error');
+          notifyUI('Error', 'No se pudo enviar el mensaje interno. ' + error.message, 'error');
       } else {
           notifyUI('Mensaje Enviado', 'El mensaje interno ha sido enviado.', 'success');
       }
@@ -567,7 +579,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           if (error) {
               console.error("Error deleting message:", error);
-              notifyUI('Error', 'No se pudo eliminar el mensaje.', 'error');
+              // Check for common errors
+              if (error.code === '42703') { // Undefined column
+                  notifyUI('Error de Base de Datos', 'Falta la columna "deletedByUserIds". Ejecuta el script SQL.', 'error');
+              } else if (error.code === '42501') { // RLS
+                  notifyUI('Error de Permisos', 'No tienes permiso para editar mensajes. Revisa RLS en Supabase.', 'error');
+              } else {
+                  notifyUI('Error', `No se pudo eliminar: ${error.message}`, 'error');
+              }
               // Rollback
               setInternalMessages(prev => prev.map(m => m.id === messageId ? { ...m, deletedByUserIds: currentDeleted } : m));
           } else {
@@ -636,7 +655,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         calendarColor: user.calendarColor || '#3b82f6'
     };
     setUsers(prev => [...prev, newUser]);
-    await supabase.from('users').insert(newUser);
+    const { error } = await supabase.from('users').insert(newUser);
+    if(error) notifyUI('Error BD', error.message, 'error');
+
     sendEmailWithTemplate('WELCOME', newUser, { name: newUser.name });
     if (initialOvertime > 0) {
         const overtimeRec = { id: generateId(), userId: newUserId, date: new Date().toISOString(), hours: initialOvertime, description: 'Saldo Inicial (Carga Admin)', status: RequestStatus.APPROVED, consumed: 0, createdAt: new Date().toISOString(), isAdjustment: true };
@@ -1061,13 +1082,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const createShiftType = async (type: Omit<ShiftTypeDefinition, 'id'>) => {
     const newType = { ...type, id: generateId() };
     setShiftTypes(prev => [...prev, newType]);
-    await supabase.from('shift_types').insert(newType);
+    const { error } = await supabase.from('shift_types').insert(newType);
+    if (error) {
+        console.error("Error creating shift type:", error);
+        notifyUI('Error al guardar', 'No se pudo guardar el turno en la base de datos. ' + error.message, 'error');
+    }
   };
   
   const updateShiftType = async (type: ShiftTypeDefinition) => {
       setShiftTypes(prev => prev.map(t => t.id === type.id ? type : t));
-      await supabase.from('shift_types').update(type).eq('id', type.id);
-      notifyUI('Turno Actualizado', 'El tipo de turno ha sido modificado.', 'success');
+      const { error } = await supabase.from('shift_types').update(type).eq('id', type.id);
+      if (error) {
+          notifyUI('Error al guardar', 'No se pudo actualizar el turno: ' + error.message, 'error');
+      } else {
+          notifyUI('Turno Actualizado', 'El tipo de turno ha sido modificado.', 'success');
+      }
   };
 
   const deleteShiftType = async (id: string) => {
