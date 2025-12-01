@@ -12,7 +12,7 @@ const AdminPanel = () => {
       notifications, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig, sendTestEmail, systemMessage, updateSystemMessage,
       shiftTypes, createShiftType, updateShiftType, deleteShiftType,
       addRequest, deleteRequest, addOvertime, deleteOvertime, requestRedemption,
-      fetchData
+      fetchData, requests, overtime
   } = useData();
 
   const [activeTab, setActiveTab] = useState<'users' | 'depts' | 'absences' | 'shifts' | 'config'>('users');
@@ -37,6 +37,11 @@ const AdminPanel = () => {
       const [adjHours, setAdjHours] = useState(0);
       const [adjHoursDesc, setAdjHoursDesc] = useState('');
 
+      // Admin Create Request State
+      const [adminReqForm, setAdminReqForm] = useState({ typeId: '', startDate: '', endDate: '', comment: '' });
+      // Admin Redeem State
+      const [adminRedeemForm, setAdminRedeemForm] = useState({ hours: 0, type: RedemptionType.PAYROLL });
+
       const filteredUsers = users.filter(u => 
           u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
           u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -57,6 +62,9 @@ const AdminPanel = () => {
           setEditingUser(user);
           setUserForm({ ...user, password: '' }); // Clear password for security
           setEditTab('profile');
+          // Reset internal forms
+          setAdminReqForm({ typeId: '', startDate: '', endDate: '', comment: '' });
+          setAdminRedeemForm({ hours: 0, type: RedemptionType.PAYROLL });
       };
 
       const handleUpdateProfile = (e: React.FormEvent) => {
@@ -100,23 +108,72 @@ const AdminPanel = () => {
           }
       };
 
+      const handleAdminCreateAbsence = (e: React.FormEvent) => {
+          e.preventDefault();
+          if(editingUser && adminReqForm.typeId && adminReqForm.startDate && adminReqForm.endDate) {
+              addRequest({
+                  userId: editingUser.id,
+                  typeId: adminReqForm.typeId,
+                  startDate: adminReqForm.startDate,
+                  endDate: adminReqForm.endDate,
+                  comment: adminReqForm.comment || 'Creado por Administración'
+              }, RequestStatus.APPROVED);
+              setAdminReqForm({ typeId: '', startDate: '', endDate: '', comment: '' });
+              alert('Ausencia creada y aprobada.');
+          }
+      };
+
+      const handleAdminRedeem = (e: React.FormEvent) => {
+          e.preventDefault();
+          if(editingUser && adminRedeemForm.hours > 0) {
+              // Find positive records to link (FIFO or simply oldest available)
+              const userOvertime = overtime.filter(o => o.userId === editingUser.id && o.status === RequestStatus.APPROVED && o.hours > 0 && o.consumed < o.hours);
+              // Simple linking logic: take all needed IDs
+              const linkedIds = userOvertime.map(o => o.id);
+              
+              requestRedemption(
+                  adminRedeemForm.hours, 
+                  linkedIds, 
+                  adminRedeemForm.type, 
+                  editingUser.id, 
+                  RequestStatus.APPROVED
+              );
+              setAdminRedeemForm({ hours: 0, type: RedemptionType.PAYROLL });
+              alert('Canje procesado y aprobado.');
+          }
+      };
+
       // Helper to calculate balances for the table
-      const getUserStats = (userId: string) => {
+      const getUserBalances = (userId: string) => {
+          const user = users.find(u => u.id === userId);
+          if(!user) return { vacation: 0, overtime: 0 };
+
           // Vacation
-          const userRequests = useData().requests.filter(r => r.userId === userId && r.status === RequestStatus.APPROVED);
-          const usedDays = userRequests.reduce((acc, req) => {
-             // Basic calc, assumes standard week
+          const userRequests = requests.filter(r => r.userId === userId && r.status === RequestStatus.APPROVED);
+          // Filter types that deduct days
+          const vacationTypeIds = absenceTypes
+            .filter(t => t.deductsDays === true || (t.deductsDays === undefined && t.name.toLowerCase().includes('vacacion'))) 
+            .map(t => t.id);
+
+          const usedDays = userRequests.filter(r => vacationTypeIds.includes(r.typeId)).reduce((acc, req) => {
              const s = new Date(req.startDate);
              const e = new Date(req.endDate);
-             const diff = Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+             // Normalize to noon to avoid timezone issues
+             s.setHours(12,0,0,0);
+             e.setHours(12,0,0,0);
+             const diff = Math.ceil(Math.abs(e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
              return acc + diff;
           }, 0);
           
-          // Overtime
-          const userOvertime = useData().overtime.filter(o => o.userId === userId && o.status === RequestStatus.APPROVED);
-          const balance = userOvertime.reduce((acc, curr) => acc + (curr.hours - curr.consumed), 0);
+          const totalVacation = 22 + (user.vacationAdjustment || 0);
           
-          return { usedDays, balance };
+          // Overtime
+          const userOvertime = overtime.filter(o => o.userId === userId && o.status === RequestStatus.APPROVED);
+          // Only count positive records minus their consumed amount
+          const positiveRecords = userOvertime.filter(o => o.hours > 0);
+          const balance = positiveRecords.reduce((acc, curr) => acc + (curr.hours - curr.consumed), 0);
+          
+          return { vacation: totalVacation - usedDays, overtime: balance, totalVacation };
       };
 
       return (
@@ -145,55 +202,67 @@ const AdminPanel = () => {
                               <th className="px-6 py-4">Usuario</th>
                               <th className="px-6 py-4">Rol</th>
                               <th className="px-6 py-4">Departamento</th>
+                              <th className="px-6 py-4 text-center">Vacaciones</th>
+                              <th className="px-6 py-4 text-center">Horas Extras</th>
                               <th className="px-6 py-4 text-right">Acciones</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                          {filteredUsers.map(u => (
-                              <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
-                                  <td className="px-6 py-4">
-                                      <div className="flex items-center space-x-3">
-                                          <img 
-                                              src={u.avatarUrl || `https://ui-avatars.com/api/?name=${u.name}&background=random`} 
-                                              alt="" 
-                                              className="w-10 h-10 rounded-full bg-slate-200 object-cover"
-                                          />
-                                          <div>
-                                              <p className="text-sm font-bold text-slate-800">{u.name}</p>
-                                              <p className="text-xs text-slate-500">{u.email}</p>
+                          {filteredUsers.map(u => {
+                              const stats = getUserBalances(u.id);
+                              return (
+                                  <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
+                                      <td className="px-6 py-4">
+                                          <div className="flex items-center space-x-3">
+                                              <img 
+                                                  src={u.avatarUrl || `https://ui-avatars.com/api/?name=${u.name}&background=random`} 
+                                                  alt="" 
+                                                  className="w-10 h-10 rounded-full bg-slate-200 object-cover"
+                                              />
+                                              <div>
+                                                  <p className="text-sm font-bold text-slate-800">{u.name}</p>
+                                                  <p className="text-xs text-slate-500">{u.email}</p>
+                                              </div>
                                           </div>
-                                      </div>
-                                  </td>
-                                  <td className="px-6 py-4">
-                                      <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
-                                          u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' :
-                                          u.role === Role.SUPERVISOR ? 'bg-emerald-100 text-emerald-700' :
-                                          'bg-blue-100 text-blue-700'
-                                      }`}>
-                                          {u.role}
-                                      </span>
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-slate-600">
-                                      {departments.find(d => d.id === u.departmentId)?.name || <span className="text-slate-400 italic">Sin asignar</span>}
-                                  </td>
-                                  <td className="px-6 py-4 text-right space-x-2">
-                                      <button 
-                                          onClick={() => openEditModal(u)} 
-                                          className="p-2 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors"
-                                          title="Editar"
-                                      >
-                                          <Edit2 size={18} />
-                                      </button>
-                                      <button 
-                                          onClick={() => { if(confirm('¿Seguro que quieres eliminar este usuario?')) deleteUser(u.id); }} 
-                                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                          title="Eliminar"
-                                      >
-                                          <Trash2 size={18} />
-                                      </button>
-                                  </td>
-                              </tr>
-                          ))}
+                                      </td>
+                                      <td className="px-6 py-4">
+                                          <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
+                                              u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' :
+                                              u.role === Role.SUPERVISOR ? 'bg-emerald-100 text-emerald-700' :
+                                              'bg-blue-100 text-blue-700'
+                                          }`}>
+                                              {u.role}
+                                          </span>
+                                      </td>
+                                      <td className="px-6 py-4 text-sm text-slate-600">
+                                          {departments.find(d => d.id === u.departmentId)?.name || <span className="text-slate-400 italic">Sin asignar</span>}
+                                      </td>
+                                      <td className="px-6 py-4 text-center">
+                                          <span className={`font-bold ${stats.vacation < 5 ? 'text-amber-600' : 'text-slate-700'}`}>{stats.vacation}</span>
+                                          <span className="text-xs text-slate-400"> / {stats.totalVacation}</span>
+                                      </td>
+                                      <td className="px-6 py-4 text-center">
+                                          <span className="font-bold text-primary">{stats.overtime}h</span>
+                                      </td>
+                                      <td className="px-6 py-4 text-right space-x-2">
+                                          <button 
+                                              onClick={() => openEditModal(u)} 
+                                              className="p-2 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-lg transition-colors"
+                                              title="Editar"
+                                          >
+                                              <Edit2 size={18} />
+                                          </button>
+                                          <button 
+                                              onClick={() => { if(confirm('¿Seguro que quieres eliminar este usuario?')) deleteUser(u.id); }} 
+                                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                              title="Eliminar"
+                                          >
+                                              <Trash2 size={18} />
+                                          </button>
+                                      </td>
+                                  </tr>
+                              );
+                          })}
                       </tbody>
                   </table>
                   {filteredUsers.length === 0 && (
@@ -350,9 +419,28 @@ const AdminPanel = () => {
 
                               {editTab === 'absences' && (
                                   <div className="space-y-6">
+                                      {/* Admin Create Absence Form */}
+                                      <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg">
+                                          <h5 className="font-bold text-slate-800 text-sm mb-3">Registrar Nueva Ausencia (Aprobación Automática)</h5>
+                                          <form onSubmit={handleAdminCreateAbsence} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                                              <div className="md:col-span-1">
+                                                  <select required className="w-full border p-2 rounded text-sm" value={adminReqForm.typeId} onChange={e => setAdminReqForm({...adminReqForm, typeId: e.target.value})}>
+                                                      <option value="">Tipo...</option>
+                                                      {absenceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                  </select>
+                                              </div>
+                                              <div>
+                                                  <input type="date" required className="w-full border p-2 rounded text-sm" value={adminReqForm.startDate} onChange={e => setAdminReqForm({...adminReqForm, startDate: e.target.value})} />
+                                              </div>
+                                              <div>
+                                                  <input type="date" required className="w-full border p-2 rounded text-sm" value={adminReqForm.endDate} onChange={e => setAdminReqForm({...adminReqForm, endDate: e.target.value})} />
+                                              </div>
+                                              <button type="submit" className="bg-emerald-600 text-white p-2 rounded text-sm font-medium hover:bg-emerald-700">Crear</button>
+                                          </form>
+                                      </div>
+
                                       <div className="flex justify-between">
                                           <h4 className="font-bold text-slate-700">Historial de Ausencias</h4>
-                                          {/* Add Absence Button Logic could go here */}
                                       </div>
                                       <div className="border rounded-lg overflow-hidden">
                                           <table className="w-full text-sm">
@@ -383,6 +471,27 @@ const AdminPanel = () => {
 
                               {editTab === 'overtime' && (
                                   <div className="space-y-6">
+                                      {/* Admin Create Redemption Form */}
+                                      <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
+                                          <h5 className="font-bold text-purple-900 text-sm mb-3">Canjear Horas (Consumo Administrativo)</h5>
+                                          <form onSubmit={handleAdminRedeem} className="flex gap-3 items-end">
+                                              <div>
+                                                  <label className="block text-xs font-bold text-purple-700 mb-1">Horas</label>
+                                                  <input type="number" step="0.5" required className="w-32 border p-2 rounded text-sm" value={adminRedeemForm.hours} onChange={e => setAdminRedeemForm({...adminRedeemForm, hours: Number(e.target.value)})} />
+                                              </div>
+                                              <div className="flex-1">
+                                                  <label className="block text-xs font-bold text-purple-700 mb-1">Motivo</label>
+                                                  <select className="w-full border p-2 rounded text-sm" value={adminRedeemForm.type} onChange={e => setAdminRedeemForm({...adminRedeemForm, type: e.target.value as RedemptionType})}>
+                                                      <option value={RedemptionType.PAYROLL}>Abono en Nómina</option>
+                                                      <option value={RedemptionType.TIME_OFF}>Horas Libres</option>
+                                                      <option value={RedemptionType.DAYS_EXCHANGE}>Días Libres</option>
+                                                  </select>
+                                              </div>
+                                              <button type="submit" className="bg-purple-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-purple-700">Canjear</button>
+                                          </form>
+                                          <p className="text-xs text-purple-600 mt-2">Se consumirán automáticamente los registros más antiguos disponibles.</p>
+                                      </div>
+
                                       <div className="flex justify-between">
                                           <h4 className="font-bold text-slate-700">Registro de Horas</h4>
                                       </div>
@@ -557,10 +666,6 @@ const AdminPanel = () => {
       const [currentDate, setCurrentDate] = useState(new Date());
       const { shifts, addShift, deleteShift } = useData();
 
-      // Calendar Logic simplified for Admin Painting... 
-      // Reusing CalendarView logic or a simplified grid would be best.
-      // For brevity in this large file, assuming CalendarView is used for robust shift mgmt.
-      
       const [newShiftType, setNewShiftType] = useState<Partial<ShiftTypeDefinition>>({ name: '', startTime: '', endTime: '', color: 'bg-blue-100 text-blue-800 border-blue-300' });
 
       return (
