@@ -4,310 +4,200 @@ import { useData } from '../context/DataContext';
 import { Settings, Calendar, Briefcase, Plus, User as UserIcon, Trash2, Edit2, Search, X, Check, Eye, Printer, Download, Upload, Database, Mail, Save, AlertCircle, Key, Server, Palette, Sun, Moon, Eraser, ChevronLeft, ChevronRight, CalendarDays, Clock, FileText, LayoutList, Megaphone, Send, MessageSquare, RefreshCw, Paintbrush } from 'lucide-react';
 import { Role, RequestStatus, AbsenceType, Department, User, OvertimeRecord, RedemptionType, EmailTemplate, ShiftType, ShiftTypeDefinition } from '../types';
 
-const AdminPanel = () => {
-  const { 
-      absenceTypes, createAbsenceType, deleteAbsenceType, updateAbsenceType,
-      departments, addDepartment, updateDepartment, deleteDepartment,
-      users, updateUser, adjustUserVacation, addUser, deleteUser, 
-      notifications, emailTemplates, updateEmailTemplate, saveEmailConfig, emailConfig, saveSmtpConfig, smtpConfig, sendTestEmail, systemMessage, updateSystemMessage,
-      shiftTypes, createShiftType, updateShiftType, deleteShiftType,
-      addRequest, deleteRequest, addOvertime, deleteOvertime, requestRedemption,
-      fetchData, requests, overtime, shifts, addShift, deleteShift,
-      sendInternalMessage
-  } = useData();
+// --- SUB-COMPONENTS DEFINED OUTSIDE TO PREVENT RE-RENDERS ---
 
-  const [activeTab, setActiveTab] = useState<'users' | 'depts' | 'absences' | 'shifts' | 'config'>('users');
+const UsersTab = ({ onAddUser, onEditUser }: { onAddUser: () => void, onEditUser: (u: User) => void }) => {
+    const { users, departments, requests, absenceTypes, overtime, deleteUser } = useData();
+    const [searchTerm, setSearchTerm] = useState('');
 
-  // --- MODAL STATES ---
-  // Users
-  const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  
-  // Departments
-  const [showDeptModal, setShowDeptModal] = useState(false);
-  const [deptForm, setDeptForm] = useState<Partial<Department>>({ name: '', supervisorIds: [] });
-  
-  // Absence Types
-  const [showAbsenceModal, setShowAbsenceModal] = useState(false);
-  const [absenceForm, setAbsenceForm] = useState<Partial<AbsenceType>>({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false });
+    const filteredUsers = users.filter(u => 
+        u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
-  // --- USER TAB LOGIC ---
-  const [searchTerm, setSearchTerm] = useState('');
-  const [newUser, setNewUser] = useState({ name: '', email: '', role: Role.WORKER, departmentId: '', initialVacation: 0, initialOvertime: 0 });
-  const [editTab, setEditTab] = useState<'profile'|'absences'|'overtime'|'adjustments'>('profile');
-  const [userForm, setUserForm] = useState<Partial<User>>({});
-  
-  // Adjustment States
-  const [adjDays, setAdjDays] = useState(0);
-  const [adjReason, setAdjReason] = useState('');
-  const [adjHours, setAdjHours] = useState(0);
-  const [adjHoursDesc, setAdjHoursDesc] = useState('');
-  const [adminReqForm, setAdminReqForm] = useState({ typeId: '', startDate: '', endDate: '', comment: '' });
-  const [adminRedeemForm, setAdminRedeemForm] = useState({ hours: 0, type: RedemptionType.PAYROLL });
+    const getUserBalances = (userId: string) => {
+        const user = users.find(u => u.id === userId);
+        if(!user) return { vacation: 0, overtime: 0, totalVacation: 0 };
 
-  const filteredUsers = users.filter(u => 
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+        const userRequests = requests.filter(r => r.userId === userId && r.status === RequestStatus.APPROVED);
+        const vacationTypeIds = absenceTypes
+          .filter(t => t.deductsDays === true || (t.deductsDays === undefined && t.name.toLowerCase().includes('vacacion'))) 
+          .map(t => t.id);
 
-  const handleAddUser = (e: React.FormEvent) => {
-      e.preventDefault();
-      addUser(
-          { name: newUser.name, email: newUser.email, role: newUser.role, departmentId: newUser.departmentId }, 
-          newUser.initialVacation, 
-          newUser.initialOvertime
-      );
-      setShowAddUserModal(false);
-      setNewUser({ name: '', email: '', role: Role.WORKER, departmentId: '', initialVacation: 0, initialOvertime: 0 });
-  };
+        const usedDays = userRequests.filter(r => vacationTypeIds.includes(r.typeId)).reduce((acc, req) => {
+           const s = new Date(req.startDate);
+           const e = new Date(req.endDate);
+           s.setHours(12,0,0,0);
+           e.setHours(12,0,0,0);
+           const diff = Math.ceil(Math.abs(e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+           return acc + diff;
+        }, 0);
+        
+        const totalVacation = 22 + (user.vacationAdjustment || 0);
+        const remainingVacation = totalVacation - usedDays;
+        
+        const userOvertime = overtime.filter(o => o.userId === userId && o.status === RequestStatus.APPROVED);
+        const positiveRecords = userOvertime.filter(o => o.hours > 0);
+        const balance = positiveRecords.reduce((acc, curr) => acc + (curr.hours - curr.consumed), 0);
+        
+        return { vacation: remainingVacation, overtime: balance, totalVacation };
+    };
 
-  const openEditUserModal = (user: User) => {
-      setEditingUser(user);
-      setUserForm({ ...user, password: '' });
-      setEditTab('profile');
-      setAdminReqForm({ typeId: '', startDate: '', endDate: '', comment: '' });
-      setAdminRedeemForm({ hours: 0, type: RedemptionType.PAYROLL });
-  };
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="relative w-full md:w-96">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
+                    <input type="text" placeholder="Buscar usuario..." className="w-full pl-10 pr-4 py-2 border rounded-lg" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                </div>
+                <button onClick={onAddUser} className="flex items-center px-4 py-2 bg-primary text-white rounded-lg shadow-lg">
+                    <Plus size={18} className="mr-2" /> Nuevo Usuario
+                </button>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                    <thead>
+                        <tr className="bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th className="px-6 py-4">Usuario</th>
+                            <th className="px-6 py-4">Rol</th>
+                            <th className="px-6 py-4">Departamento</th>
+                            <th className="px-6 py-4 text-center">Vacaciones</th>
+                            <th className="px-6 py-4 text-center">Horas Extras</th>
+                            <th className="px-6 py-4 text-right">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {filteredUsers.map(u => {
+                            const stats = getUserBalances(u.id);
+                            return (
+                                <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center space-x-3">
+                                            <img src={u.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-slate-200 object-cover" />
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{u.name}</p>
+                                                <p className="text-xs text-slate-500">{u.email}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' : u.role === Role.SUPERVISOR ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            {u.role}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-slate-600">
+                                        {departments.find(d => d.id === u.departmentId)?.name || <span className="text-slate-400 italic">Sin asignar</span>}
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className={`font-bold ${stats.vacation < 5 ? 'text-amber-600' : 'text-slate-700'}`}>{stats.vacation}</span>
+                                        <span className="text-xs text-slate-400"> / {stats.totalVacation}</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className="font-bold text-primary">{stats.overtime}h</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right space-x-2">
+                                        <button onClick={() => onEditUser(u)} className="p-2 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-lg">
+                                            <Edit2 size={18} />
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                // Custom confirmation dialog replacement for "window.confirm"
+                                                if(confirm('¿Estás seguro de eliminar este usuario?')) {
+                                                    deleteUser(u.id);
+                                                }
+                                            }} 
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (editingUser) {
-          const updates: any = {
-              name: userForm.name,
-              email: userForm.email,
-              role: userForm.role,
-              departmentId: userForm.departmentId,
-              calendarColor: userForm.calendarColor
-          };
-          if (userForm.password) updates.password = userForm.password;
-          updateUser(editingUser.id, updates);
-          setEditingUser(null);
-      }
-  };
+const DeptsTab = ({ onAddDept, onEditDept }: { onAddDept: () => void, onEditDept: (d: Department) => void }) => {
+    const { departments, users, deleteDepartment } = useData();
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-slate-800">Departamentos</h3>
+                <button onClick={onAddDept} className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center shadow-lg">
+                    <Plus size={16} className="mr-2"/> Añadir Departamento
+                </button>
+            </div>
+            <div className="grid gap-4">
+                {departments.map(d => (
+                    <div key={d.id} className="flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                        <div>
+                            <span className="font-bold text-slate-800 text-lg">{d.name}</span>
+                            <div className="mt-1 flex items-center text-sm text-slate-500">
+                                <UserIcon size={14} className="mr-1"/>
+                                {d.supervisorIds && d.supervisorIds.length > 0 ? (
+                                    <span>{d.supervisorIds.map(sid => users.find(u => u.id === sid)?.name).filter(Boolean).join(', ')}</span>
+                                ) : (
+                                    <span className="italic text-slate-400">Sin supervisores asignados</span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => onEditDept(d)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={18}/></button>
+                            <button onClick={() => { if(confirm('¿Eliminar departamento?')) deleteDepartment(d.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
-  // --- DEPARTMENT LOGIC ---
-  const handleOpenDeptModal = (dept?: Department) => {
-      if (dept) {
-          setDeptForm(dept);
-      } else {
-          setDeptForm({ name: '', supervisorIds: [] });
-      }
-      setShowDeptModal(true);
-  };
+const AbsencesTab = ({ onAddAbsence, onEditAbsence }: { onAddAbsence: () => void, onEditAbsence: (t: AbsenceType) => void }) => {
+    const { absenceTypes, deleteAbsenceType } = useData();
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-slate-800">Tipos de Ausencia</h3>
+                <button onClick={onAddAbsence} className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center shadow-lg">
+                    <Plus size={16} className="mr-2"/> Crear Tipo
+                </button>
+            </div>
+            <div className="grid gap-4">
+                {absenceTypes.map(t => (
+                    <div key={t.id} className="p-4 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <span className={`px-3 py-1 rounded text-sm font-bold ${t.color}`}>{t.name}</span>
+                            <div className="flex gap-2">
+                                {t.deductsDays ? (
+                                    <span className="text-[10px] bg-red-50 text-red-600 font-bold px-2 py-0.5 rounded border border-red-100">Descuenta Días</span>
+                                ) : (
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded border border-emerald-100">No Descuenta</span>
+                                )}
+                                {t.isClosedRange && <span className="text-[10px] bg-amber-50 text-amber-600 font-bold px-2 py-0.5 rounded border border-amber-100">Rango Cerrado</span>}
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => onEditAbsence(t)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={18}/></button>
+                            <button onClick={() => deleteAbsenceType(t.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
-  const handleSaveDepartment = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (deptForm.id) {
-          updateDepartment(deptForm as Department);
-      } else {
-          addDepartment(deptForm.name!, deptForm.supervisorIds);
-      }
-      setShowDeptModal(false);
-  };
+const ConfigTab = () => {
+    const { 
+        emailTemplates, updateEmailTemplate, saveSmtpConfig, smtpConfig, sendTestEmail, systemMessage, updateSystemMessage,
+        users, sendInternalMessage, fetchData
+    } = useData();
 
-  const toggleSupervisor = (userId: string) => {
-      const currentIds = deptForm.supervisorIds || [];
-      if (currentIds.includes(userId)) {
-          setDeptForm({ ...deptForm, supervisorIds: currentIds.filter(id => id !== userId) });
-      } else {
-          setDeptForm({ ...deptForm, supervisorIds: [...currentIds, userId] });
-      }
-  };
-
-  // --- ABSENCE TYPE LOGIC ---
-  const handleOpenAbsenceModal = (type?: AbsenceType) => {
-      if (type) {
-          setAbsenceForm(type);
-      } else {
-          setAbsenceForm({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false });
-      }
-      setShowAbsenceModal(true);
-  };
-
-  const handleSaveAbsenceType = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (absenceForm.id) {
-          updateAbsenceType(absenceForm as AbsenceType);
-      } else {
-          createAbsenceType(absenceForm as any);
-      }
-      setShowAbsenceModal(false);
-  };
-
-  // --- SUB-COMPONENTS ---
-
-  // ... (UsersTab, DeptsTab, AbsencesTab, ConfigTab remain unchanged)
-  
-  const UsersTab = () => {
-      const getUserBalances = (userId: string) => {
-          const user = users.find(u => u.id === userId);
-          if(!user) return { vacation: 0, overtime: 0, totalVacation: 0 };
-
-          const userRequests = requests.filter(r => r.userId === userId && r.status === RequestStatus.APPROVED);
-          const vacationTypeIds = absenceTypes
-            .filter(t => t.deductsDays === true || (t.deductsDays === undefined && t.name.toLowerCase().includes('vacacion'))) 
-            .map(t => t.id);
-
-          const usedDays = userRequests.filter(r => vacationTypeIds.includes(r.typeId)).reduce((acc, req) => {
-             const s = new Date(req.startDate);
-             const e = new Date(req.endDate);
-             s.setHours(12,0,0,0);
-             e.setHours(12,0,0,0);
-             const diff = Math.ceil(Math.abs(e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-             return acc + diff;
-          }, 0);
-          
-          const totalVacation = 22 + (user.vacationAdjustment || 0);
-          const remainingVacation = totalVacation - usedDays;
-          
-          const userOvertime = overtime.filter(o => o.userId === userId && o.status === RequestStatus.APPROVED);
-          const positiveRecords = userOvertime.filter(o => o.hours > 0);
-          const balance = positiveRecords.reduce((acc, curr) => acc + (curr.hours - curr.consumed), 0);
-          
-          return { vacation: remainingVacation, overtime: balance, totalVacation };
-      };
-
-      return (
-          <div className="space-y-6">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div className="relative w-full md:w-96">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-                      <input type="text" placeholder="Buscar usuario..." className="w-full pl-10 pr-4 py-2 border rounded-lg" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                  </div>
-                  <button onClick={() => setShowAddUserModal(true)} className="flex items-center px-4 py-2 bg-primary text-white rounded-lg shadow-lg">
-                      <Plus size={18} className="mr-2" /> Nuevo Usuario
-                  </button>
-              </div>
-              
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                      <thead>
-                          <tr className="bg-slate-50 border-b text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                              <th className="px-6 py-4">Usuario</th>
-                              <th className="px-6 py-4">Rol</th>
-                              <th className="px-6 py-4">Departamento</th>
-                              <th className="px-6 py-4 text-center">Vacaciones</th>
-                              <th className="px-6 py-4 text-center">Horas Extras</th>
-                              <th className="px-6 py-4 text-right">Acciones</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                          {filteredUsers.map(u => {
-                              const stats = getUserBalances(u.id);
-                              return (
-                                  <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                                      <td className="px-6 py-4">
-                                          <div className="flex items-center space-x-3">
-                                              <img src={u.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-slate-200 object-cover" />
-                                              <div>
-                                                  <p className="text-sm font-bold text-slate-800">{u.name}</p>
-                                                  <p className="text-xs text-slate-500">{u.email}</p>
-                                              </div>
-                                          </div>
-                                      </td>
-                                      <td className="px-6 py-4">
-                                          <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${u.role === Role.ADMIN ? 'bg-purple-100 text-purple-700' : u.role === Role.SUPERVISOR ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                                              {u.role}
-                                          </span>
-                                      </td>
-                                      <td className="px-6 py-4 text-sm text-slate-600">
-                                          {departments.find(d => d.id === u.departmentId)?.name || <span className="text-slate-400 italic">Sin asignar</span>}
-                                      </td>
-                                      <td className="px-6 py-4 text-center">
-                                          <span className={`font-bold ${stats.vacation < 5 ? 'text-amber-600' : 'text-slate-700'}`}>{stats.vacation}</span>
-                                          <span className="text-xs text-slate-400"> / {stats.totalVacation}</span>
-                                      </td>
-                                      <td className="px-6 py-4 text-center">
-                                          <span className="font-bold text-primary">{stats.overtime}h</span>
-                                      </td>
-                                      <td className="px-6 py-4 text-right space-x-2">
-                                          <button onClick={() => openEditUserModal(u)} className="p-2 text-slate-400 hover:text-primary hover:bg-blue-50 rounded-lg">
-                                              <Edit2 size={18} />
-                                          </button>
-                                          <button onClick={() => { if(window.confirm('¿Estás seguro de eliminar este usuario?')) deleteUser(u.id); }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
-                                              <Trash2 size={18} />
-                                          </button>
-                                      </td>
-                                  </tr>
-                              );
-                          })}
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      );
-  };
-
-  const DeptsTab = () => {
-      return (
-          <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-slate-800">Departamentos</h3>
-                  <button onClick={() => handleOpenDeptModal()} className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center shadow-lg">
-                      <Plus size={16} className="mr-2"/> Añadir Departamento
-                  </button>
-              </div>
-              <div className="grid gap-4">
-                  {departments.map(d => (
-                      <div key={d.id} className="flex justify-between items-center p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                          <div>
-                              <span className="font-bold text-slate-800 text-lg">{d.name}</span>
-                              <div className="mt-1 flex items-center text-sm text-slate-500">
-                                  <UserIcon size={14} className="mr-1"/>
-                                  {d.supervisorIds && d.supervisorIds.length > 0 ? (
-                                      <span>{d.supervisorIds.map(sid => users.find(u => u.id === sid)?.name).filter(Boolean).join(', ')}</span>
-                                  ) : (
-                                      <span className="italic text-slate-400">Sin supervisores asignados</span>
-                                  )}
-                              </div>
-                          </div>
-                          <div className="flex gap-2">
-                              <button onClick={() => handleOpenDeptModal(d)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={18}/></button>
-                              <button onClick={() => { if(confirm('¿Eliminar departamento?')) deleteDepartment(d.id) }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
-                          </div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      );
-  };
-
-  const AbsencesTab = () => {
-      return (
-          <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-slate-800">Tipos de Ausencia</h3>
-                  <button onClick={() => handleOpenAbsenceModal()} className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center shadow-lg">
-                      <Plus size={16} className="mr-2"/> Crear Tipo
-                  </button>
-              </div>
-              <div className="grid gap-4">
-                  {absenceTypes.map(t => (
-                      <div key={t.id} className="p-4 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-sm">
-                          <div className="flex items-center gap-4">
-                              <span className={`px-3 py-1 rounded text-sm font-bold ${t.color}`}>{t.name}</span>
-                              <div className="flex gap-2">
-                                  {t.deductsDays ? (
-                                      <span className="text-[10px] bg-red-50 text-red-600 font-bold px-2 py-0.5 rounded border border-red-100">Descuenta Días</span>
-                                  ) : (
-                                      <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded border border-emerald-100">No Descuenta</span>
-                                  )}
-                                  {t.isClosedRange && <span className="text-[10px] bg-amber-50 text-amber-600 font-bold px-2 py-0.5 rounded border border-amber-100">Rango Cerrado</span>}
-                              </div>
-                          </div>
-                          <div className="flex gap-2">
-                              <button onClick={() => handleOpenAbsenceModal(t)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={18}/></button>
-                              <button onClick={() => deleteAbsenceType(t.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
-                          </div>
-                      </div>
-                  ))}
-              </div>
-          </div>
-      );
-  };
-
-  const ConfigTab = () => {
-    // Reuse existing ConfigTab implementation
     const [localSmtp, setLocalSmtp] = useState(smtpConfig);
     const [localMsg, setLocalMsg] = useState(systemMessage || { id: 'global_msg', text: '', active: false, color: 'bg-blue-600 text-white' });
     const [testEmail, setTestEmail] = useState('');
@@ -515,277 +405,407 @@ const AdminPanel = () => {
             )}
         </div>
     );
-  };
+};
 
-  const ShiftsTab = () => {
-      const [viewMode, setViewMode] = useState<'visual' | 'config'>('visual');
-      const [newShiftType, setNewShiftType] = useState<Partial<ShiftTypeDefinition>>({ name: '', startTime: '', endTime: '', color: 'bg-blue-100 text-blue-800 border-blue-300' });
-      
-      // Visual Manager State
-      const [selectedUserForShifts, setSelectedUserForShifts] = useState('');
-      const [selectedTool, setSelectedTool] = useState<string>(''); // ShiftType ID or 'eraser'
-      const [currentMonth, setCurrentMonth] = useState(new Date());
-      const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-      const [clicks, setClicks] = useState<{id: number, x: number, y: number, color: string}[]>([]); // For splash effects
-      
-      // DRAG STATE
-      const [isDragging, setIsDragging] = useState(false);
+const ShiftsTab = () => {
+    const { 
+        users, shiftTypes, createShiftType, deleteShiftType, 
+        shifts, addShift, deleteShift
+    } = useData();
 
-      // Helpers for Calendar
-      const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-      const getFirstDayOfMonth = (date: Date) => {
-          const day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-          return day === 0 ? 6 : day - 1;
-      };
-      
-      const handleMonthChange = (increment: number) => {
-          setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + increment, 1));
-      };
+    const [viewMode, setViewMode] = useState<'visual' | 'config'>('visual');
+    const [newShiftType, setNewShiftType] = useState<Partial<ShiftTypeDefinition>>({ name: '', startTime: '', endTime: '', color: 'bg-blue-100 text-blue-800 border-blue-300' });
+    
+    // Visual Manager State (NOW PERSISTENT ACROSS PARENT RENDERS)
+    const [selectedUserForShifts, setSelectedUserForShifts] = useState('');
+    const [selectedTool, setSelectedTool] = useState<string>(''); // ShiftType ID or 'eraser'
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+    const [clicks, setClicks] = useState<{id: number, x: number, y: number, color: string}[]>([]); // For splash effects
+    
+    // DRAG STATE
+    const [isDragging, setIsDragging] = useState(false);
 
-      const applyShift = async (day: number, clientX: number, clientY: number) => {
-          if (!selectedUserForShifts || !selectedTool) return;
-          
-          const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day, 12).toISOString().split('T')[0];
-          
-          // Visual Splash Logic
-          const splashColor = selectedTool === 'eraser' ? 'bg-red-500' : shiftTypes.find(t => t.id === selectedTool)?.color.split(' ')[0].replace('bg-', 'bg-') || 'bg-blue-500';
-          const newClick = { id: Date.now() + Math.random(), x: clientX, y: clientY, color: splashColor };
-          setClicks(prev => [...prev, newClick]);
-          setTimeout(() => setClicks(prev => prev.filter(c => c.id !== newClick.id)), 600); // Remove splash after animation
+    // Helpers for Calendar
+    const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    const getFirstDayOfMonth = (date: Date) => {
+        const day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+        return day === 0 ? 6 : day - 1;
+    };
+    
+    const handleMonthChange = (increment: number) => {
+        setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + increment, 1));
+    };
 
-          if (selectedTool === 'eraser') {
-              const shiftToDelete = shifts.find(s => s.userId === selectedUserForShifts && s.date === dateStr);
-              if (shiftToDelete) deleteShift(shiftToDelete.id);
-          } else {
-              // Avoid duplicate calls if same day and type
-              const exists = shifts.find(s => s.userId === selectedUserForShifts && s.date === dateStr && s.shiftType === selectedTool);
-              if (!exists) {
-                  await addShift(selectedUserForShifts, dateStr, selectedTool);
-              }
-          }
-      }
+    const applyShift = async (day: number, clientX: number, clientY: number) => {
+        if (!selectedUserForShifts || !selectedTool) return;
+        
+        const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day, 12).toISOString().split('T')[0];
+        
+        // Visual Splash Logic
+        const splashColor = selectedTool === 'eraser' ? 'bg-red-500' : shiftTypes.find(t => t.id === selectedTool)?.color.split(' ')[0].replace('bg-', 'bg-') || 'bg-blue-500';
+        const newClick = { id: Date.now() + Math.random(), x: clientX, y: clientY, color: splashColor };
+        setClicks(prev => [...prev, newClick]);
+        setTimeout(() => setClicks(prev => prev.filter(c => c.id !== newClick.id)), 600); // Remove splash after animation
 
-      const handleMouseDown = (day: number, e: React.MouseEvent) => {
-          setIsDragging(true);
-          applyShift(day, e.clientX, e.clientY);
-      };
+        if (selectedTool === 'eraser') {
+            const shiftToDelete = shifts.find(s => s.userId === selectedUserForShifts && s.date === dateStr);
+            if (shiftToDelete) deleteShift(shiftToDelete.id);
+        } else {
+            // Avoid duplicate calls if same day and type
+            const exists = shifts.find(s => s.userId === selectedUserForShifts && s.date === dateStr && s.shiftType === selectedTool);
+            if (!exists) {
+                await addShift(selectedUserForShifts, dateStr, selectedTool);
+            }
+        }
+    }
 
-      const handleMouseEnter = (day: number, e: React.MouseEvent) => {
-          if (isDragging) {
-              applyShift(day, e.clientX, e.clientY);
-          }
-      };
+    const handleMouseDown = (day: number, e: React.MouseEvent) => {
+        setIsDragging(true);
+        applyShift(day, e.clientX, e.clientY);
+    };
 
-      const handleMouseUp = () => setIsDragging(false);
+    const handleMouseEnter = (day: number, e: React.MouseEvent) => {
+        if (isDragging) {
+            applyShift(day, e.clientX, e.clientY);
+        }
+    };
 
-      // Custom Cursor Logic
-      const calendarRef = useRef<HTMLDivElement>(null);
-      useEffect(() => {
-          const handleMouseMove = (e: MouseEvent) => {
-              if (calendarRef.current && calendarRef.current.contains(e.target as Node)) {
-                  setMousePos({ x: e.clientX, y: e.clientY });
-              }
-          };
-          window.addEventListener('mousemove', handleMouseMove);
-          window.addEventListener('mouseup', handleMouseUp); // Global mouse up
-          return () => {
-              window.removeEventListener('mousemove', handleMouseMove);
-              window.removeEventListener('mouseup', handleMouseUp);
-          };
-      }, []);
+    const handleMouseUp = () => setIsDragging(false);
 
-      const activeToolDef = shiftTypes.find(t => t.id === selectedTool);
+    // Custom Cursor Logic
+    const calendarRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (calendarRef.current && calendarRef.current.contains(e.target as Node)) {
+                setMousePos({ x: e.clientX, y: e.clientY });
+            }
+        };
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp); // Global mouse up
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
 
-      return (
-          <div className="space-y-6">
-              <div className="flex space-x-4 mb-4">
-                  <button onClick={() => setViewMode('visual')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors ${viewMode === 'visual' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-600 border hover:bg-slate-50'}`}>
-                      <Paintbrush size={16} className="mr-2" /> Asignación Visual
-                  </button>
-                  <button onClick={() => setViewMode('config')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors ${viewMode === 'config' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-600 border hover:bg-slate-50'}`}>
-                      <Settings size={16} className="mr-2" /> Configuración Tipos
-                  </button>
-              </div>
+    const activeToolDef = shiftTypes.find(t => t.id === selectedTool);
 
-              {viewMode === 'config' ? (
-                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-in fade-in">
-                      <h3 className="font-bold text-slate-800 mb-4">Gestión de Tipos de Turno</h3>
-                      <div className="space-y-3 mb-6">
-                          {shiftTypes.map(t => (
-                              <div key={t.id} className="flex justify-between items-center p-3 bg-slate-50 rounded border border-slate-100">
-                                  <div className="flex items-center gap-3">
-                                      <span className={`w-4 h-4 rounded-full ${t.color.split(' ')[0]}`}></span>
-                                      <div>
-                                          <p className="font-bold text-sm">{t.name}</p>
-                                          <p className="text-xs text-slate-500">{t.startTime} - {t.endTime} {t.startTime2 && `/ ${t.startTime2} - ${t.endTime2}`}</p>
-                                      </div>
-                                  </div>
-                                  <button onClick={() => deleteShiftType(t.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
-                              </div>
-                          ))}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 pt-4 border-t">
-                          <input type="text" placeholder="Nombre" className="border p-2 rounded text-sm" value={newShiftType.name} onChange={e => setNewShiftType({...newShiftType, name: e.target.value})} />
-                          <select className="border p-2 rounded text-sm" value={newShiftType.color} onChange={e => setNewShiftType({...newShiftType, color: e.target.value})}>
-                              <option value="bg-blue-100 text-blue-800 border-blue-300">Azul</option>
-                              <option value="bg-emerald-100 text-emerald-800 border-emerald-300">Verde</option>
-                              <option value="bg-amber-100 text-amber-800 border-amber-300">Amarillo</option>
-                              <option value="bg-red-100 text-red-800 border-red-300">Rojo</option>
-                              <option value="bg-purple-100 text-purple-800 border-purple-300">Morado</option>
-                              <option value="bg-pink-100 text-pink-800 border-pink-300">Rosa</option>
-                              <option value="bg-teal-100 text-teal-800 border-teal-300">Turquesa</option>
-                              <option value="bg-slate-800 text-slate-200 border-slate-600">Noche (Oscuro)</option>
-                          </select>
-                          <input type="time" className="border p-2 rounded text-sm" value={newShiftType.startTime} onChange={e => setNewShiftType({...newShiftType, startTime: e.target.value})} />
-                          <input type="time" className="border p-2 rounded text-sm" value={newShiftType.endTime} onChange={e => setNewShiftType({...newShiftType, endTime: e.target.value})} />
-                          <input type="time" className="border p-2 rounded text-sm" placeholder="Inicio 2" value={newShiftType.startTime2 || ''} onChange={e => setNewShiftType({...newShiftType, startTime2: e.target.value})} />
-                          <input type="time" className="border p-2 rounded text-sm" placeholder="Fin 2" value={newShiftType.endTime2 || ''} onChange={e => setNewShiftType({...newShiftType, endTime2: e.target.value})} />
-                          <button onClick={() => { if(newShiftType.name) { createShiftType(newShiftType as any); setNewShiftType({name:'', startTime:'', endTime:''}); } }} className="col-span-2 bg-slate-800 text-white py-2 rounded text-sm hover:bg-slate-700">Crear Turno</button>
-                      </div>
-                  </div>
-              ) : (
-                  <div className="flex gap-6 h-[600px] animate-in fade-in">
-                      {/* TOOLBAR */}
-                      <div className="w-64 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
-                          <h4 className="font-bold text-slate-800 mb-1">Gestión Visual</h4>
-                          <p className="text-xs text-slate-500 mb-4">Selecciona usuario y arrastra para pintar.</p>
-                          
-                          <div className="mb-6">
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">1. Seleccionar Trabajador</label>
-                              <select className="w-full border p-2 rounded text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-primary" value={selectedUserForShifts} onChange={e => setSelectedUserForShifts(e.target.value)}>
-                                  <option value="">Seleccionar...</option>
-                                  {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-                              </select>
-                          </div>
+    return (
+        <div className="space-y-6">
+            <div className="flex space-x-4 mb-4">
+                <button onClick={() => setViewMode('visual')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors ${viewMode === 'visual' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-600 border hover:bg-slate-50'}`}>
+                    <Paintbrush size={16} className="mr-2" /> Asignación Visual
+                </button>
+                <button onClick={() => setViewMode('config')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-colors ${viewMode === 'config' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-600 border hover:bg-slate-50'}`}>
+                    <Settings size={16} className="mr-2" /> Configuración Tipos
+                </button>
+            </div>
 
-                          <div className="flex-1 overflow-y-auto pr-1">
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">2. Elegir Herramienta</label>
-                              <div className="space-y-2">
-                                  {shiftTypes.map(t => (
-                                      <button 
-                                          key={t.id}
-                                          onClick={() => setSelectedTool(t.id)}
-                                          className={`w-full p-3 rounded-xl border flex items-center transition-all ${selectedTool === t.id ? 'ring-2 ring-offset-1 ring-slate-400 shadow-md transform scale-[1.02]' : 'border-slate-100 hover:bg-slate-50'}`}
-                                      >
-                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${t.color.split(' ')[0]} ${t.color.split(' ')[2] || 'border-transparent'} border`}>
-                                              <Clock size={16} className={t.color.includes('text-white') || t.color.includes('text-slate-200') ? 'text-white' : 'text-slate-600'} />
-                                          </div>
-                                          <div className="text-left">
-                                              <p className="text-sm font-bold text-slate-700">{t.name}</p>
-                                              <p className="text-[10px] text-slate-400">{t.startTime} - {t.endTime}</p>
-                                          </div>
-                                      </button>
-                                  ))}
-                                  
-                                  <button 
-                                      onClick={() => setSelectedTool('eraser')}
-                                      className={`w-full p-3 rounded-xl border border-red-100 bg-red-50 flex items-center transition-all mt-4 ${selectedTool === 'eraser' ? 'ring-2 ring-offset-1 ring-red-300 shadow-md' : 'hover:bg-red-100'}`}
-                                  >
-                                      <div className="w-8 h-8 rounded-full bg-red-200 flex items-center justify-center mr-3">
-                                          <Eraser size={16} className="text-red-600" />
-                                      </div>
-                                      <div className="text-left">
-                                          <p className="text-sm font-bold text-red-700">Borrador</p>
-                                          <p className="text-[10px] text-red-400">Eliminar turno</p>
-                                      </div>
-                                  </button>
-                              </div>
-                          </div>
-                          
-                          <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700 border border-blue-100 flex items-start">
-                              <Paintbrush size={14} className="mr-2 mt-0.5 flex-shrink-0" />
-                              <p><strong>Instrucciones:</strong> Mantén pulsado y arrastra sobre los días para pintar.</p>
-                          </div>
-                      </div>
+            {viewMode === 'config' ? (
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-in fade-in">
+                    <h3 className="font-bold text-slate-800 mb-4">Gestión de Tipos de Turno</h3>
+                    <div className="space-y-3 mb-6">
+                        {shiftTypes.map(t => (
+                            <div key={t.id} className="flex justify-between items-center p-3 bg-slate-50 rounded border border-slate-100">
+                                <div className="flex items-center gap-3">
+                                    <span className={`w-4 h-4 rounded-full ${t.color.split(' ')[0]}`}></span>
+                                    <div>
+                                        <p className="font-bold text-sm">{t.name}</p>
+                                        <p className="text-xs text-slate-500">{t.startTime} - {t.endTime} {t.startTime2 && `/ ${t.startTime2} - ${t.endTime2}`}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => deleteShiftType(t.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-4 border-t">
+                        <input type="text" placeholder="Nombre" className="border p-2 rounded text-sm" value={newShiftType.name} onChange={e => setNewShiftType({...newShiftType, name: e.target.value})} />
+                        <select className="border p-2 rounded text-sm" value={newShiftType.color} onChange={e => setNewShiftType({...newShiftType, color: e.target.value})}>
+                            <option value="bg-blue-100 text-blue-800 border-blue-300">Azul</option>
+                            <option value="bg-emerald-100 text-emerald-800 border-emerald-300">Verde</option>
+                            <option value="bg-amber-100 text-amber-800 border-amber-300">Amarillo</option>
+                            <option value="bg-red-100 text-red-800 border-red-300">Rojo</option>
+                            <option value="bg-purple-100 text-purple-800 border-purple-300">Morado</option>
+                            <option value="bg-pink-100 text-pink-800 border-pink-300">Rosa</option>
+                            <option value="bg-teal-100 text-teal-800 border-teal-300">Turquesa</option>
+                            <option value="bg-slate-800 text-slate-200 border-slate-600">Noche (Oscuro)</option>
+                        </select>
+                        <input type="time" className="border p-2 rounded text-sm" value={newShiftType.startTime} onChange={e => setNewShiftType({...newShiftType, startTime: e.target.value})} />
+                        <input type="time" className="border p-2 rounded text-sm" value={newShiftType.endTime} onChange={e => setNewShiftType({...newShiftType, endTime: e.target.value})} />
+                        <input type="time" className="border p-2 rounded text-sm" placeholder="Inicio 2" value={newShiftType.startTime2 || ''} onChange={e => setNewShiftType({...newShiftType, startTime2: e.target.value})} />
+                        <input type="time" className="border p-2 rounded text-sm" placeholder="Fin 2" value={newShiftType.endTime2 || ''} onChange={e => setNewShiftType({...newShiftType, endTime2: e.target.value})} />
+                        <button onClick={() => { if(newShiftType.name) { createShiftType(newShiftType as any); setNewShiftType({name:'', startTime:'', endTime:''}); } }} className="col-span-2 bg-slate-800 text-white py-2 rounded text-sm hover:bg-slate-700">Crear Turno</button>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex gap-6 h-[600px] animate-in fade-in">
+                    {/* TOOLBAR */}
+                    <div className="w-64 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
+                        <h4 className="font-bold text-slate-800 mb-1">Gestión Visual</h4>
+                        <p className="text-xs text-slate-500 mb-4">Selecciona usuario y arrastra para pintar.</p>
+                        
+                        <div className="mb-6">
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">1. Seleccionar Trabajador</label>
+                            <select className="w-full border p-2 rounded text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-primary" value={selectedUserForShifts} onChange={e => setSelectedUserForShifts(e.target.value)}>
+                                <option value="">Seleccionar...</option>
+                                {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                            </select>
+                        </div>
 
-                      {/* CALENDAR */}
-                      <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden relative select-none">
-                          <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
-                              <button onClick={() => handleMonthChange(-1)} className="p-1 hover:bg-slate-200 rounded"><ChevronLeft /></button>
-                              <span className="font-bold text-slate-800 capitalize">{currentMonth.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}</span>
-                              <button onClick={() => handleMonthChange(1)} className="p-1 hover:bg-slate-200 rounded"><ChevronRight /></button>
-                          </div>
-                          
-                          {/* Calendar Grid Container */}
-                          <div 
-                              className={`flex-1 overflow-auto p-4 cursor-default relative ${selectedTool && selectedUserForShifts ? 'cursor-none' : ''}`}
-                              ref={calendarRef}
-                          >
-                              {/* Header Days */}
-                              <div className="grid grid-cols-7 mb-2">
-                                  {['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].map(d => (
-                                      <div key={d} className="text-center text-xs font-bold text-slate-400">{d}</div>
-                                  ))}
-                              </div>
-                              
-                              {/* Days Grid */}
-                              <div className="grid grid-cols-7 auto-rows-fr gap-1 min-h-[400px]">
-                                  {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, i) => <div key={`e-${i}`} />)}
-                                  
-                                  {Array.from({ length: getDaysInMonth(currentMonth) }).map((_, i) => {
-                                      const day = i + 1;
-                                      const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day, 12).toISOString().split('T')[0];
-                                      const shift = shifts.find(s => s.userId === selectedUserForShifts && s.date === dateStr);
-                                      const shiftDef = shift ? shiftTypes.find(t => t.id === shift.shiftType) : null;
+                        <div className="flex-1 overflow-y-auto pr-1">
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">2. Elegir Herramienta</label>
+                            <div className="space-y-2">
+                                {shiftTypes.map(t => (
+                                    <button 
+                                        key={t.id}
+                                        onClick={() => setSelectedTool(t.id)}
+                                        className={`w-full p-3 rounded-xl border flex items-center transition-all ${selectedTool === t.id ? 'ring-2 ring-offset-1 ring-slate-400 shadow-md transform scale-[1.02]' : 'border-slate-100 hover:bg-slate-50'}`}
+                                    >
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${t.color.split(' ')[0]} ${t.color.split(' ')[2] || 'border-transparent'} border`}>
+                                            <Clock size={16} className={t.color.includes('text-white') || t.color.includes('text-slate-200') ? 'text-white' : 'text-slate-600'} />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-sm font-bold text-slate-700">{t.name}</p>
+                                            <p className="text-[10px] text-slate-400">{t.startTime} - {t.endTime}</p>
+                                        </div>
+                                    </button>
+                                ))}
+                                
+                                <button 
+                                    onClick={() => setSelectedTool('eraser')}
+                                    className={`w-full p-3 rounded-xl border border-red-100 bg-red-50 flex items-center transition-all mt-4 ${selectedTool === 'eraser' ? 'ring-2 ring-offset-1 ring-red-300 shadow-md' : 'hover:bg-red-100'}`}
+                                >
+                                    <div className="w-8 h-8 rounded-full bg-red-200 flex items-center justify-center mr-3">
+                                        <Eraser size={16} className="text-red-600" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-sm font-bold text-red-700">Borrador</p>
+                                        <p className="text-[10px] text-red-400">Eliminar turno</p>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700 border border-blue-100 flex items-start">
+                            <Paintbrush size={14} className="mr-2 mt-0.5 flex-shrink-0" />
+                            <p><strong>Instrucciones:</strong> Mantén pulsado y arrastra sobre los días para pintar.</p>
+                        </div>
+                    </div>
 
-                                      return (
-                                          <div 
-                                              key={day} 
-                                              onMouseDown={(e) => handleMouseDown(day, e)}
-                                              onMouseEnter={(e) => handleMouseEnter(day, e)}
-                                              className={`
-                                                  min-h-[80px] border rounded-lg p-1 relative transition-all group hover:border-slate-400
-                                                  ${shiftDef ? shiftDef.color + ' border-transparent' : 'bg-slate-50 border-slate-100'}
-                                              `}
-                                          >
-                                              <span className={`text-xs font-bold ${shiftDef ? 'opacity-80' : 'text-slate-400'}`}>{day}</span>
-                                              {shiftDef && (
-                                                  <div className="flex flex-col items-center justify-center h-full pb-4 pointer-events-none">
-                                                      <Clock size={16} className="opacity-50 mb-1" />
-                                                      <span className="text-[10px] font-bold text-center leading-none">{shiftDef.name}</span>
-                                                  </div>
-                                              )}
-                                          </div>
-                                      );
-                                  })}
-                              </div>
+                    {/* CALENDAR */}
+                    <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden relative select-none">
+                        <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
+                            <button onClick={() => handleMonthChange(-1)} className="p-1 hover:bg-slate-200 rounded"><ChevronLeft /></button>
+                            <span className="font-bold text-slate-800 capitalize">{currentMonth.toLocaleString('es-ES', { month: 'long', year: 'numeric' })}</span>
+                            <button onClick={() => handleMonthChange(1)} className="p-1 hover:bg-slate-200 rounded"><ChevronRight /></button>
+                        </div>
+                        
+                        {/* Calendar Grid Container */}
+                        <div 
+                            className={`flex-1 overflow-auto p-4 cursor-default relative ${selectedTool && selectedUserForShifts ? 'cursor-none' : ''}`}
+                            ref={calendarRef}
+                        >
+                            {/* Header Days */}
+                            <div className="grid grid-cols-7 mb-2">
+                                {['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].map(d => (
+                                    <div key={d} className="text-center text-xs font-bold text-slate-400">{d}</div>
+                                ))}
+                            </div>
+                            
+                            {/* Days Grid */}
+                            <div className="grid grid-cols-7 auto-rows-fr gap-1 min-h-[400px]">
+                                {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, i) => <div key={`e-${i}`} />)}
+                                
+                                {Array.from({ length: getDaysInMonth(currentMonth) }).map((_, i) => {
+                                    const day = i + 1;
+                                    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day, 12).toISOString().split('T')[0];
+                                    const shift = shifts.find(s => s.userId === selectedUserForShifts && s.date === dateStr);
+                                    const shiftDef = shift ? shiftTypes.find(t => t.id === shift.shiftType) : null;
 
-                              {/* CLICK ANIMATIONS (SPLASH) */}
-                              {clicks.map(c => (
-                                  <div 
-                                      key={c.id}
-                                      className={`fixed rounded-full pointer-events-none animate-ping ${c.color.includes('bg-') ? c.color : 'bg-blue-500'}`}
-                                      style={{ left: c.x - 20, top: c.y - 20, width: 40, height: 40, opacity: 0.5, zIndex: 9999 }}
-                                  />
-                              ))}
+                                    return (
+                                        <div 
+                                            key={day} 
+                                            onMouseDown={(e) => handleMouseDown(day, e)}
+                                            onMouseEnter={(e) => handleMouseEnter(day, e)}
+                                            className={`
+                                                min-h-[80px] border rounded-lg p-1 relative transition-all group hover:border-slate-400
+                                                ${shiftDef ? shiftDef.color + ' border-transparent' : 'bg-slate-50 border-slate-100'}
+                                            `}
+                                        >
+                                            <span className={`text-xs font-bold ${shiftDef ? 'opacity-80' : 'text-slate-400'}`}>{day}</span>
+                                            {shiftDef && (
+                                                <div className="flex flex-col items-center justify-center h-full pb-4 pointer-events-none">
+                                                    <Clock size={16} className="opacity-50 mb-1" />
+                                                    <span className="text-[10px] font-bold text-center leading-none">{shiftDef.name}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
 
-                              {/* CUSTOM CURSOR FOLLOWER */}
-                              {selectedTool && selectedUserForShifts && (
-                                  <div 
-                                      className="fixed pointer-events-none z-50 flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
-                                      style={{ left: mousePos.x, top: mousePos.y }}
-                                  >
-                                      {selectedTool === 'eraser' ? (
-                                          <div className="bg-red-500 text-white p-2 rounded-full shadow-lg border-2 border-white">
-                                              <Eraser size={20} />
-                                          </div>
-                                      ) : activeToolDef ? (
-                                          <div className={`p-2 rounded-full shadow-xl border-2 border-white flex flex-col items-center ${activeToolDef.color.split(' ')[0]}`}>
-                                              <Clock size={20} className={activeToolDef.color.includes('text-white') ? 'text-white' : 'text-slate-800'} />
-                                              <span className="absolute top-full mt-1 bg-slate-800 text-white text-[10px] px-2 py-0.5 rounded whitespace-nowrap">
-                                                  {activeToolDef.name}
-                                              </span>
-                                          </div>
-                                      ) : null}
-                                  </div>
-                              )}
-                          </div>
-                      </div>
-                  </div>
-              )}
-          </div>
+                            {/* CLICK ANIMATIONS (SPLASH) */}
+                            {clicks.map(c => (
+                                <div 
+                                    key={c.id}
+                                    className={`fixed rounded-full pointer-events-none animate-ping ${c.color.includes('bg-') ? c.color : 'bg-blue-500'}`}
+                                    style={{ left: c.x - 20, top: c.y - 20, width: 40, height: 40, opacity: 0.5, zIndex: 9999 }}
+                                />
+                            ))}
+
+                            {/* CUSTOM CURSOR FOLLOWER */}
+                            {selectedTool && selectedUserForShifts && (
+                                <div 
+                                    className="fixed pointer-events-none z-50 flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
+                                    style={{ left: mousePos.x, top: mousePos.y }}
+                                >
+                                    {selectedTool === 'eraser' ? (
+                                        <div className="bg-red-500 text-white p-2 rounded-full shadow-lg border-2 border-white">
+                                            <Eraser size={20} />
+                                        </div>
+                                    ) : activeToolDef ? (
+                                        <div className={`p-2 rounded-full shadow-xl border-2 border-white flex flex-col items-center ${activeToolDef.color.split(' ')[0]}`}>
+                                            <Clock size={20} className={activeToolDef.color.includes('text-white') ? 'text-white' : 'text-slate-800'} />
+                                            <span className="absolute top-full mt-1 bg-slate-800 text-white text-[10px] px-2 py-0.5 rounded whitespace-nowrap">
+                                                {activeToolDef.name}
+                                            </span>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const AdminPanel = () => {
+  const { 
+      createAbsenceType, deleteAbsenceType, updateAbsenceType,
+      addDepartment, updateDepartment, deleteDepartment,
+      updateUser, adjustUserVacation, addUser, 
+      addRequest, deleteRequest, addOvertime, deleteOvertime, requestRedemption,
+      requests, overtime
+  } = useData();
+
+  const [activeTab, setActiveTab] = useState<'users' | 'depts' | 'absences' | 'shifts' | 'config'>('users');
+
+  // --- MODAL STATES ---
+  // Users
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  
+  // Departments
+  const [showDeptModal, setShowDeptModal] = useState(false);
+  const [deptForm, setDeptForm] = useState<Partial<Department>>({ name: '', supervisorIds: [] });
+  
+  // Absence Types
+  const [showAbsenceModal, setShowAbsenceModal] = useState(false);
+  const [absenceForm, setAbsenceForm] = useState<Partial<AbsenceType>>({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false });
+
+  // --- USER FORM LOGIC ---
+  const [newUser, setNewUser] = useState({ name: '', email: '', role: Role.WORKER, departmentId: '', initialVacation: 0, initialOvertime: 0 });
+  const [editTab, setEditTab] = useState<'profile'|'absences'|'overtime'|'adjustments'>('profile');
+  const [userForm, setUserForm] = useState<Partial<User>>({});
+  
+  // Adjustment States
+  const [adjDays, setAdjDays] = useState(0);
+  const [adjReason, setAdjReason] = useState('');
+  const [adjHours, setAdjHours] = useState(0);
+  const [adjHoursDesc, setAdjHoursDesc] = useState('');
+  const [adminReqForm, setAdminReqForm] = useState({ typeId: '', startDate: '', endDate: '', comment: '' });
+  const [adminRedeemForm, setAdminRedeemForm] = useState({ hours: 0, type: RedemptionType.PAYROLL });
+
+  const { departments, absenceTypes } = useData(); // Needed for forms
+
+  const handleAddUser = (e: React.FormEvent) => {
+      e.preventDefault();
+      addUser(
+          { name: newUser.name, email: newUser.email, role: newUser.role, departmentId: newUser.departmentId }, 
+          newUser.initialVacation, 
+          newUser.initialOvertime
       );
+      setShowAddUserModal(false);
+      setNewUser({ name: '', email: '', role: Role.WORKER, departmentId: '', initialVacation: 0, initialOvertime: 0 });
   };
+
+  const openEditUserModal = (user: User) => {
+      setEditingUser(user);
+      setUserForm({ ...user, password: '' });
+      setEditTab('profile');
+      setAdminReqForm({ typeId: '', startDate: '', endDate: '', comment: '' });
+      setAdminRedeemForm({ hours: 0, type: RedemptionType.PAYROLL });
+  };
+
+  const handleUpdateProfile = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (editingUser) {
+          const updates: any = {
+              name: userForm.name,
+              email: userForm.email,
+              role: userForm.role,
+              departmentId: userForm.departmentId,
+              calendarColor: userForm.calendarColor
+          };
+          if (userForm.password) updates.password = userForm.password;
+          updateUser(editingUser.id, updates);
+          setEditingUser(null);
+      }
+  };
+
+  // --- DEPARTMENT LOGIC ---
+  const handleOpenDeptModal = (dept?: Department) => {
+      if (dept) {
+          setDeptForm(dept);
+      } else {
+          setDeptForm({ name: '', supervisorIds: [] });
+      }
+      setShowDeptModal(true);
+  };
+
+  const handleSaveDepartment = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (deptForm.id) {
+          updateDepartment(deptForm as Department);
+      } else {
+          addDepartment(deptForm.name!, deptForm.supervisorIds);
+      }
+      setShowDeptModal(false);
+  };
+
+  const toggleSupervisor = (userId: string) => {
+      const currentIds = deptForm.supervisorIds || [];
+      if (currentIds.includes(userId)) {
+          setDeptForm({ ...deptForm, supervisorIds: currentIds.filter(id => id !== userId) });
+      } else {
+          setDeptForm({ ...deptForm, supervisorIds: [...currentIds, userId] });
+      }
+  };
+
+  // --- ABSENCE TYPE LOGIC ---
+  const handleOpenAbsenceModal = (type?: AbsenceType) => {
+      if (type) {
+          setAbsenceForm(type);
+      } else {
+          setAbsenceForm({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false });
+      }
+      setShowAbsenceModal(true);
+  };
+
+  const handleSaveAbsenceType = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (absenceForm.id) {
+          updateAbsenceType(absenceForm as AbsenceType);
+      } else {
+          createAbsenceType(absenceForm as any);
+      }
+      setShowAbsenceModal(false);
+  };
+
+  const { users } = useData();
 
   return (
     <div className="space-y-6">
@@ -800,14 +820,14 @@ const AdminPanel = () => {
       </div>
 
       <div className="min-h-[400px]">
-          {activeTab === 'users' && <UsersTab />}
-          {activeTab === 'depts' && <DeptsTab />}
-          {activeTab === 'absences' && <AbsencesTab />}
+          {activeTab === 'users' && <UsersTab onAddUser={() => setShowAddUserModal(true)} onEditUser={openEditUserModal} />}
+          {activeTab === 'depts' && <DeptsTab onAddDept={() => handleOpenDeptModal()} onEditDept={handleOpenDeptModal} />}
+          {activeTab === 'absences' && <AbsencesTab onAddAbsence={() => handleOpenAbsenceModal()} onEditAbsence={handleOpenAbsenceModal} />}
           {activeTab === 'shifts' && <ShiftsTab />}
           {activeTab === 'config' && <ConfigTab />}
       </div>
 
-      {/* --- MODALS (Keep existing ones) --- */}
+      {/* --- MODALS --- */}
       {/* 1. Add/Edit Department Modal */}
       {showDeptModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -891,7 +911,7 @@ const AdminPanel = () => {
           </div>
       )}
 
-      {/* 3. Add User Modal (Already existing but ensure it's rendered) */}
+      {/* 3. Add User Modal */}
       {showAddUserModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in duration-200">
