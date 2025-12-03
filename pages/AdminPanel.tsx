@@ -704,7 +704,7 @@ const AdminPanel = () => {
   
   // Absence Types
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
-  const [absenceForm, setAbsenceForm] = useState<Partial<AbsenceType>>({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false });
+  const [absenceForm, setAbsenceForm] = useState<Partial<AbsenceType>>({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false, availableRanges: [] });
 
   // --- USER FORM LOGIC ---
   const [newUser, setNewUser] = useState({ name: '', email: '', role: Role.WORKER, departmentId: '', initialVacation: 0, initialOvertime: 0 });
@@ -788,9 +788,9 @@ const AdminPanel = () => {
   // --- ABSENCE TYPE LOGIC ---
   const handleOpenAbsenceModal = (type?: AbsenceType) => {
       if (type) {
-          setAbsenceForm(type);
+          setAbsenceForm({ ...type, availableRanges: type.availableRanges || [] });
       } else {
-          setAbsenceForm({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false });
+          setAbsenceForm({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false, availableRanges: [] });
       }
       setShowAbsenceModal(true);
   };
@@ -902,6 +902,59 @@ const AdminPanel = () => {
                               <span>Rango Cerrado (Fechas fijas)</span>
                           </label>
                       </div>
+
+                      {absenceForm.isClosedRange && (
+                          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Rangos Disponibles</label>
+                              <div className="space-y-2 mb-3">
+                                  {absenceForm.availableRanges?.map((range, idx) => (
+                                      <div key={idx} className="flex items-center gap-2 text-sm">
+                                          <span className="bg-white border px-2 py-1 rounded">{new Date(range.start).toLocaleDateString()} - {new Date(range.end).toLocaleDateString()}</span>
+                                          <button 
+                                              type="button"
+                                              onClick={() => {
+                                                  const newRanges = absenceForm.availableRanges?.filter((_, i) => i !== idx);
+                                                  setAbsenceForm({ ...absenceForm, availableRanges: newRanges });
+                                              }}
+                                              className="text-red-500 hover:bg-red-50 p-1 rounded"
+                                          >
+                                              <Trash2 size={14} />
+                                          </button>
+                                      </div>
+                                  ))}
+                              </div>
+                              <div className="flex gap-2 items-end">
+                                  <div className="flex-1">
+                                      <label className="text-[10px] text-slate-400">Inicio</label>
+                                      <input type="date" id="newRangeStart" className="w-full border p-1 rounded text-sm" />
+                                  </div>
+                                  <div className="flex-1">
+                                      <label className="text-[10px] text-slate-400">Fin</label>
+                                      <input type="date" id="newRangeEnd" className="w-full border p-1 rounded text-sm" />
+                                  </div>
+                                  <button 
+                                      type="button"
+                                      onClick={() => {
+                                          const startEl = document.getElementById('newRangeStart') as HTMLInputElement;
+                                          const endEl = document.getElementById('newRangeEnd') as HTMLInputElement;
+                                          if (startEl.value && endEl.value) {
+                                              const currentRanges = absenceForm.availableRanges || [];
+                                              setAbsenceForm({
+                                                  ...absenceForm,
+                                                  availableRanges: [...currentRanges, { start: startEl.value, end: endEl.value }]
+                                              });
+                                              startEl.value = '';
+                                              endEl.value = '';
+                                          }
+                                      }}
+                                      className="bg-slate-800 text-white p-1.5 rounded text-xs mb-0.5"
+                                  >
+                                      <Plus size={16} />
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+
                       <div className="flex justify-end gap-2 pt-2">
                           <button type="button" onClick={() => setShowAbsenceModal(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-lg">Cancelar</button>
                           <button type="submit" className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700">Guardar</button>
