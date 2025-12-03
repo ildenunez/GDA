@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
@@ -7,7 +6,7 @@ import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
 const LOGO_URL = "https://img.evbuc.com/https%3A%2F%2Fcdn.evbuc.com%2Fimages%2F677236879%2F73808960223%2F1%2Foriginal.20240118-071537?w=284&auto=format%2Ccompress&q=75&sharp=10&rect=0%2C0%2C284%2C284&s=138022d792466dd1773752da55468b5b";
 
 const Login = () => {
-  const { login, users } = useData();
+  const { loginWithCredentials } = useData();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
@@ -15,28 +14,25 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleManualLogin = (e: React.FormEvent) => {
+  const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    // Simulate network delay for effect
-    setTimeout(() => {
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    try {
+        // Use the new direct-db check
+        const result = await loginWithCredentials(email, password);
         
-        if (user) {
-            // Check password (default is '123' if not set, or the one in DB)
-            if (user.password === password) {
-                login(user.email);
-                navigate('/');
-            } else {
-                setError('Contraseña incorrecta.');
-            }
+        if (result.success) {
+            navigate('/');
         } else {
-            setError('Usuario no encontrado.');
+            setError(result.message || 'Error al iniciar sesión.');
         }
+    } catch (err) {
+        setError('Error de conexión.');
+    } finally {
         setLoading(false);
-    }, 800);
+    }
   };
 
   return (

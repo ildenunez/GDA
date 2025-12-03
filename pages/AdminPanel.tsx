@@ -705,6 +705,9 @@ const AdminPanel = () => {
   // Absence Types
   const [showAbsenceModal, setShowAbsenceModal] = useState(false);
   const [absenceForm, setAbsenceForm] = useState<Partial<AbsenceType>>({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false, availableRanges: [] });
+  // States for adding ranges (replacing document.getElementById)
+  const [newRangeStart, setNewRangeStart] = useState('');
+  const [newRangeEnd, setNewRangeEnd] = useState('');
 
   // --- USER FORM LOGIC ---
   const [newUser, setNewUser] = useState({ name: '', email: '', role: Role.WORKER, departmentId: '', initialVacation: 0, initialOvertime: 0 });
@@ -787,8 +790,13 @@ const AdminPanel = () => {
 
   // --- ABSENCE TYPE LOGIC ---
   const handleOpenAbsenceModal = (type?: AbsenceType) => {
+      setNewRangeStart('');
+      setNewRangeEnd('');
       if (type) {
-          setAbsenceForm({ ...type, availableRanges: type.availableRanges || [] });
+          setAbsenceForm({ 
+              ...type, 
+              availableRanges: type.availableRanges || [] 
+          });
       } else {
           setAbsenceForm({ name: '', color: 'bg-blue-100 text-blue-800', deductsDays: false, isClosedRange: false, availableRanges: [] });
       }
@@ -797,12 +805,50 @@ const AdminPanel = () => {
 
   const handleSaveAbsenceType = (e: React.FormEvent) => {
       e.preventDefault();
+      // Ensure availableRanges is defined
+      const payload = {
+          ...absenceForm,
+          availableRanges: absenceForm.availableRanges || []
+      };
+      
       if (absenceForm.id) {
-          updateAbsenceType(absenceForm as AbsenceType);
+          updateAbsenceType(payload as AbsenceType);
       } else {
-          createAbsenceType(absenceForm as any);
+          createAbsenceType(payload as any);
       }
       setShowAbsenceModal(false);
+  };
+
+  const handleAddRange = () => {
+      if (newRangeStart && newRangeEnd) {
+          const currentRanges = absenceForm.availableRanges || [];
+          setAbsenceForm({
+              ...absenceForm,
+              availableRanges: [...currentRanges, { start: newRangeStart, end: newRangeEnd }]
+          });
+          setNewRangeStart('');
+          setNewRangeEnd('');
+      }
+  };
+
+  const handleAdminAbsenceTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newTypeId = e.target.value;
+      const type = absenceTypes.find(t => t.id === newTypeId);
+      
+      let newStart = adminReqForm.startDate;
+      let newEnd = adminReqForm.endDate;
+      
+      if (type?.isClosedRange && type.availableRanges && type.availableRanges.length > 0) {
+          newStart = type.availableRanges[0].start;
+          newEnd = type.availableRanges[0].end;
+      }
+      
+      setAdminReqForm({
+          ...adminReqForm,
+          typeId: newTypeId,
+          startDate: newStart,
+          endDate: newEnd
+      });
   };
 
   const { users } = useData();
@@ -913,7 +959,7 @@ const AdminPanel = () => {
                                           <button 
                                               type="button"
                                               onClick={() => {
-                                                  const newRanges = absenceForm.availableRanges?.filter((_, i) => i !== idx);
+                                                  const newRanges = (absenceForm.availableRanges || []).filter((_, i) => i !== idx);
                                                   setAbsenceForm({ ...absenceForm, availableRanges: newRanges });
                                               }}
                                               className="text-red-500 hover:bg-red-50 p-1 rounded"
@@ -926,30 +972,18 @@ const AdminPanel = () => {
                               <div className="flex gap-2 items-end">
                                   <div className="flex-1">
                                       <label className="text-[10px] text-slate-400">Inicio</label>
-                                      <input type="date" id="newRangeStart" className="w-full border p-1 rounded text-sm" />
+                                      <input type="date" value={newRangeStart} onChange={e => setNewRangeStart(e.target.value)} className="w-full border p-1 rounded text-sm" />
                                   </div>
                                   <div className="flex-1">
                                       <label className="text-[10px] text-slate-400">Fin</label>
-                                      <input type="date" id="newRangeEnd" className="w-full border p-1 rounded text-sm" />
+                                      <input type="date" value={newRangeEnd} onChange={e => setNewRangeEnd(e.target.value)} className="w-full border p-1 rounded text-sm" />
                                   </div>
                                   <button 
                                       type="button"
-                                      onClick={() => {
-                                          const startEl = document.getElementById('newRangeStart') as HTMLInputElement;
-                                          const endEl = document.getElementById('newRangeEnd') as HTMLInputElement;
-                                          if (startEl.value && endEl.value) {
-                                              const currentRanges = absenceForm.availableRanges || [];
-                                              setAbsenceForm({
-                                                  ...absenceForm,
-                                                  availableRanges: [...currentRanges, { start: startEl.value, end: endEl.value }]
-                                              });
-                                              startEl.value = '';
-                                              endEl.value = '';
-                                          }
-                                      }}
-                                      className="bg-slate-800 text-white p-1.5 rounded text-xs mb-0.5"
+                                      onClick={handleAddRange}
+                                      className="bg-slate-800 text-white p-1.5 rounded text-xs mb-0.5 whitespace-nowrap"
                                   >
-                                      <Plus size={16} />
+                                      Añadir Rango
                                   </button>
                               </div>
                           </div>
@@ -1096,9 +1130,9 @@ const AdminPanel = () => {
                                   <h5 className="font-bold text-slate-800 text-sm mb-3">Registrar Nueva Ausencia (Aprobación Automática)</h5>
                                   <form onSubmit={(e) => { e.preventDefault(); if(editingUser && adminReqForm.typeId && adminReqForm.startDate && adminReqForm.endDate) { addRequest({ userId: editingUser.id, typeId: adminReqForm.typeId, startDate: adminReqForm.startDate, endDate: adminReqForm.endDate, comment: adminReqForm.comment || 'Creado por Administración' }, RequestStatus.APPROVED); setAdminReqForm({ typeId: '', startDate: '', endDate: '', comment: '' }); alert('Ausencia creada y aprobada.'); } }} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                                       <div className="md:col-span-1">
-                                          <select required className="w-full border p-2 rounded text-sm" value={adminReqForm.typeId} onChange={e => setAdminReqForm({...adminReqForm, typeId: e.target.value})}>
+                                          <select required className="w-full border p-2 rounded text-sm" value={adminReqForm.typeId} onChange={handleAdminAbsenceTypeChange}>
                                               <option value="">Tipo...</option>
-                                              {absenceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                              {absenceTypes.map(t => <option key={t.id} value={t.id}>{t.name} {t.isClosedRange ? '(Fijo)' : ''}</option>)}
                                           </select>
                                       </div>
                                       <div><input type="date" required className="w-full border p-2 rounded text-sm" value={adminReqForm.startDate} onChange={e => setAdminReqForm({...adminReqForm, startDate: e.target.value})} /></div>
